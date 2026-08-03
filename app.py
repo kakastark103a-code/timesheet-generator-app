@@ -66,7 +66,7 @@ def get_domains():
 @app.route('/api/members', methods=['GET', 'POST'])
 def handle_members():
     if request.method == 'GET':
-        domain_key = request.args.get('domain', 'fpt')
+        domain_key = request.args.get('domain', 'identity')
         if domain_key in CUSTOM_MEMBERS_STORE:
             return jsonify({'domain': domain_key, 'members': CUSTOM_MEMBERS_STORE[domain_key]})
             
@@ -200,7 +200,7 @@ def preview_month():
 def review_timesheet():
     data = request.json or {}
     month_str = data.get('month', datetime.now().strftime('%Y-%m'))
-    domain_key = data.get('domain', 'fpt')
+    domain_key = data.get('domain', 'identity')
     comment_notes = data.get('comment_notes', '')
     public_holidays = data.get('public_holidays', [])
     include_sg_holidays = data.get('auto_sg_holidays', True)
@@ -306,7 +306,7 @@ def ai_chat():
     data = request.json or {}
     prompt = data.get('prompt', '')
     current_notes = data.get('comment_notes', '')
-    domain_key = data.get('domain', 'fpt')
+    domain_key = data.get('domain', 'identity')
     api_key = data.get('api_key')
     base_url = data.get('base_url')
 
@@ -563,7 +563,7 @@ def generate_timesheets():
 def generate_individual_timesheet():
     data = request.json or {}
     month_str = data.get('month', datetime.now().strftime('%Y-%m'))
-    domain_key = data.get('domain', 'fpt')
+    domain_key = data.get('domain', 'identity')
     member_data = data.get('member')
     member_name_str = data.get('member_name', '')
     public_holidays = data.get('public_holidays', [])

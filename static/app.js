@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedDomainKeys: [],
         publicHolidays: [],
         autoSGHolidays: true,
-        currentMemberDomain: 'fpt',
+        currentMemberDomain: 'identity',
         membersByDomain: {}
     };
 
