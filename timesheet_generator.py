@@ -81,6 +81,25 @@ def get_working_days(year: int, month: int):
             working_days.append(dt)
     return working_days
 
+def clean_domain_name_string(val: str) -> str:
+    """
+    Cleans domain template filenames or keys to produce standard, human-readable domain names
+    without old month tags, 'FPT_' prefixes, or '_Timesheet' / '_Template' / '_May2026' / '_Jun2026' suffixes.
+    Example: 'FPT_EBG_CRM_OM_Jun2026.xlsx' -> 'EBG_CRM_OM'
+             'FPT_CBG CRM-OM Domain_Timesheet_May2026.xlsx' -> 'CBG_CRM-OM_Domain'
+    """
+    if not val:
+        return 'Domain'
+    base = os.path.basename(str(val)).replace('.xlsx', '')
+    base = re.sub(r'^FPT[_\s]*', '', base, flags=re.IGNORECASE)
+    base = re.sub(r'[_\s]*Timesheet[_\s]*', '_', base, flags=re.IGNORECASE)
+    base = re.sub(r'[_\s]*Template[_\s]*', '_', base, flags=re.IGNORECASE)
+    base = re.sub(r'[_\s]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\d{4}', '', base, flags=re.IGNORECASE)
+    base = base.strip('_ ')
+    base = re.sub(r'\s+', '_', base)
+    base = re.sub(r'_+', '_', base)
+    return base or 'Domain'
+
 def scan_available_domain_templates(template_dir: str = 'timesheets_extracted'):
     """
     Dynamically scans template_dir for all .xlsx files and extracts domain info.
@@ -99,20 +118,18 @@ def scan_available_domain_templates(template_dir: str = 'timesheets_extracted'):
                 key = k
                 break
                 
+        clean_name = clean_domain_name_string(fname)
         if not key:
-            base = fname.replace('.xlsx', '')
-            clean_name = base.replace('FPT_', '').replace('_Timesheet_May2026', '').replace('_Timesheet', '')
             key = clean_name.lower().replace(' ', '_').replace('-', '_')
             
         display_name = DOMAIN_NAMES.get(key)
         if not display_name:
-            base = fname.replace('.xlsx', '')
-            clean_name = base.replace('FPT_', '').replace('_Timesheet_May2026', '').replace('_Timesheet', '')
-            display_name = clean_name.strip()
+            display_name = clean_name.replace('_', ' ')
             
         domains[key] = {
             'key': key,
             'name': display_name,
+            'clean_domain': clean_name,
             'filename': fname,
             'filepath': fpath
         }

@@ -18,6 +18,7 @@ from timesheet_generator import (
     extract_resources_from_any_sheet,
     parse_comment_notes,
     trim_and_optimize_workbook,
+    clean_domain_name_string,
     DOMAIN_FILE_MAP,
     DOMAIN_NAMES
 )
@@ -738,8 +739,8 @@ def generate_timesheets():
             continue
             
         domain_info = available_domains.get(key, {})
-        domain_name = domain_info.get('name', key.upper())
-        out_filename = f"FPT_{domain_name}_Timesheet_{month_suffix}.xlsx"
+        clean_domain = domain_info.get('clean_domain') or clean_domain_name_string(domain_info.get('name') or key)
+        out_filename = f"FPT_{clean_domain}_Timesheet_{month_suffix}.xlsx"
         out_filepath = os.path.join(OUTPUT_DIR, out_filename)
         
         domain_members = custom_members_input.get(key) or CUSTOM_MEMBERS_STORE.get(key)
@@ -835,9 +836,9 @@ def generate_individual_timesheet():
     month_suffix = datetime(year, month, 1).strftime('%b%Y')
     available_domains = scan_available_domain_templates(TEMPLATE_DIR)
     domain_info = available_domains.get(domain_key, {})
-    domain_name = domain_info.get('name', domain_key.upper()).replace(' ', '_')
+    clean_domain = domain_info.get('clean_domain') or clean_domain_name_string(domain_info.get('name') or domain_key)
 
-    out_filename = f"FPT_{domain_name}_Timesheet_{month_suffix}_{safe_name}.xlsx"
+    out_filename = f"FPT_{clean_domain}_Timesheet_{month_suffix}_{safe_name}.xlsx"
     out_filepath = os.path.join(OUTPUT_DIR, out_filename)
 
     generate_domain_timesheet(
