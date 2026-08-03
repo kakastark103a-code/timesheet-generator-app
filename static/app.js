@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedDomainKeys: [],
         publicHolidays: [],
         autoSGHolidays: true,
-        currentMemberDomain: 'identity',
+        currentMemberDomain: 'cbg',
         membersByDomain: {}
     };
 
@@ -1390,7 +1390,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
     async function generateIndividualTimesheet() {
         const monthVal = indivMonthSelect.value || state.selectedMonth;
-        let domainVal = indivDomainSelect.value || 'identity';
+        let domainVal = indivDomainSelect.value || 'cbg';
         if (domainVal === '__custom_domain__') {
             const customDomText = inputCustomDomainName ? inputCustomDomainName.value.trim() : '';
             domainVal = customDomText || 'Custom_Domain';
