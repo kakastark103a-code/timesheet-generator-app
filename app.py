@@ -3,6 +3,7 @@ import io
 import re
 import zipfile
 import calendar
+import glob
 from datetime import datetime, date
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
@@ -182,6 +183,144 @@ def upload_template():
         'filename': saved_filenames[0],
         'domains_count': len(available_domains)
     })
+
+@app.route('/api/upload-chunk', methods=['POST'])
+def upload_chunk():
+    file_id = request.form.get('file_id')
+    try:
+        chunk_index = int(request.form.get('chunk_index', 0))
+        total_chunks = int(request.form.get('total_chunks', 1))
+    except ValueError:
+        return jsonify({'error': 'Invalid chunk indices'}), 400
+
+    raw_filename = request.form.get('filename', 'upload.xlsx')
+    filename = secure_filename(raw_filename)
+    target_type = request.form.get('target_type', 'template')  # 'template' or 'review'
+    chunk_file = request.files.get('chunk')
+
+    if not file_id or not chunk_file:
+        return jsonify({'error': 'Missing chunk parameters'}), 400
+
+    chunks_dir = os.path.join(OUTPUT_DIR, f"_chunks_{file_id}")
+    os.makedirs(chunks_dir, exist_ok=True)
+
+    chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_index}")
+    chunk_file.save(chunk_path)
+
+    existing_chunks = glob.glob(os.path.join(chunks_dir, "chunk_*"))
+    if len(existing_chunks) < total_chunks:
+        return jsonify({
+            'status': 'chunk_saved',
+            'chunk_index': chunk_index,
+            'total_chunks': total_chunks,
+            'received': len(existing_chunks)
+        })
+
+    # All chunks received -> Reassemble into target file
+    if target_type == 'template':
+        final_dir = TEMPLATE_DIR
+        final_path = os.path.join(final_dir, filename)
+    else:
+        final_dir = OUTPUT_DIR
+        file_token = f"batch_{int(datetime.now().timestamp())}_{filename}"
+        final_path = os.path.join(final_dir, f"_uploaded_{file_token}")
+
+    os.makedirs(final_dir, exist_ok=True)
+    with open(final_path, 'wb') as outfile:
+        for i in range(total_chunks):
+            cpath = os.path.join(chunks_dir, f"chunk_{i}")
+            if os.path.exists(cpath):
+                with open(cpath, 'rb') as infile:
+                    outfile.write(infile.read())
+                try: os.remove(cpath)
+                except Exception: pass
+
+    try: os.rmdir(chunks_dir)
+    except Exception: pass
+
+    if target_type == 'template':
+        warmup_members_cache()
+        available_domains = scan_available_domain_templates(TEMPLATE_DIR)
+        return jsonify({
+            'status': 'completed',
+            'message': f'Uploaded {filename} successfully via chunked upload!',
+            'filename': filename,
+            'domains_count': len(available_domains)
+        })
+    else:
+        try:
+            wb = openpyxl.load_workbook(final_path, data_only=True)
+            summary_data = []
+            if 'Summary' in wb.sheetnames:
+                sheet = wb['Summary']
+                for r in range(2, sheet.max_row + 1):
+                    name = sheet.cell(r, 2).value
+                    if name:
+                        summary_data.append({
+                            'no': sheet.cell(r, 1).value,
+                            'name': str(name),
+                            'team': sheet.cell(r, 3).value,
+                            'location': sheet.cell(r, 5).value,
+                            'working_days': sheet.cell(r, 6).value,
+                            'weekend_ot': sheet.cell(r, 7).value,
+                            'weekday_ot': sheet.cell(r, 8).value,
+                            'ph_ot': sheet.cell(r, 9).value,
+                            'total_ot': sheet.cell(r, 10).value,
+                            'leaves': sheet.cell(r, 11).value
+                        })
+
+            balance_data = []
+            bal_sheet_name = 'Balance Leave' if 'Balance Leave' in wb.sheetnames else ('Leave Balance' if 'Leave Balance' in wb.sheetnames else None)
+            if bal_sheet_name:
+                sheet = wb[bal_sheet_name]
+                for r in range(3, sheet.max_row + 1):
+                    name = sheet.cell(r, 2).value
+                    if name:
+                        balance_data.append({
+                            'name': str(name),
+                            'total_leave': sheet.cell(r, 6).value,
+                            'balance_upto': sheet.cell(r, 7).value,
+                            'balance_in_month': sheet.cell(r, 10).value
+                        })
+
+            timesheet_data = []
+            if 'Timesheet' in wb.sheetnames:
+                sheet = wb['Timesheet']
+                for r in range(2, sheet.max_row + 1):
+                    name = sheet.cell(r, 7).value
+                    if name:
+                        dt_val = sheet.cell(r, 2).value
+                        dt_str = dt_val.strftime('%Y-%m-%d') if isinstance(dt_val, (datetime, date)) else str(dt_val)
+                        timesheet_data.append({
+                            'date': dt_str,
+                            'work_item_type': sheet.cell(r, 3).value,
+                            'name': str(name),
+                            'task': sheet.cell(r, 6).value,
+                            'hours': sheet.cell(r, 10).value
+                        })
+
+            wb.close()
+            anomalies = audit_timesheet_data(summary_data, balance_data, timesheet_data, "Current")
+
+            report = {
+                'file_token': file_token,
+                'filename': filename,
+                'summary': summary_data,
+                'balance': balance_data,
+                'timesheet_sample': timesheet_data[:50],
+                'anomalies': anomalies
+            }
+            return jsonify({'status': 'completed', 'reports': [report]})
+        except Exception as e:
+            return jsonify({
+                'status': 'completed',
+                'reports': [{
+                    'file_token': file_token,
+                    'filename': filename,
+                    'error': f"Lỗi đọc file: {str(e)}",
+                    'anomalies': []
+                }]
+            })
 
 
 @app.route('/api/singapore-holidays', methods=['GET'])

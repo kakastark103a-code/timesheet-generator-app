@@ -731,7 +731,72 @@ Duong Thi Tuyet Mai\tMaiDTT23\tDigital Domain\t7-May có 2 line Project Task => 
 Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     }
 
-    // Handle Upload Template File (Supports multiple files, uploaded one by one to avoid Vercel 4.5MB payload limit)
+    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunks to guarantee bypassing Vercel 4.5MB payload limit
+
+    async function uploadSingleFileSmart(file, targetType = 'template', statusUpdateCb) {
+        if (!file) return null;
+
+        // If file is small (<= 2.5MB), upload normally in 1 POST request
+        if (file.size <= 2.5 * 1024 * 1024) {
+            const formData = new FormData();
+            formData.append('files', file);
+
+            const endpoint = targetType === 'template' ? '/api/upload' : '/api/review-multi-upload';
+            const res = await fetch(endpoint, { method: 'POST', body: formData });
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                if (res.status === 413) {
+                    throw new Error(`File ${file.name} is too large (>4.5MB Vercel limit).`);
+                }
+                throw new Error(`Server error (HTTP ${res.status}).`);
+            }
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Upload failed');
+            return data;
+        }
+
+        // If file > 2.5MB, use chunked upload API (/api/upload-chunk) to bypass Vercel 4.5MB limit!
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        let lastResult = null;
+
+        for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+            const start = chunkIdx * CHUNK_SIZE;
+            const end = Math.min(file.size, start + CHUNK_SIZE);
+            const chunkBlob = file.slice(start, end);
+
+            const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
+            if (statusUpdateCb) {
+                statusUpdateCb(`⏳ Chunked upload (${pct}%): ${file.name}...`);
+            }
+
+            const formData = new FormData();
+            formData.append('file_id', fileId);
+            formData.append('chunk_index', chunkIdx);
+            formData.append('total_chunks', totalChunks);
+            formData.append('filename', file.name);
+            formData.append('target_type', targetType);
+            formData.append('chunk', chunkBlob, file.name);
+
+            const res = await fetch('/api/upload-chunk', {
+                method: 'POST',
+                body: formData
+            });
+
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error(`Server error (HTTP ${res.status}) on chunk ${chunkIdx + 1}/${totalChunks}.`);
+            }
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `Chunk ${chunkIdx + 1} upload failed`);
+            lastResult = data;
+        }
+
+        return lastResult;
+    }
+
+    // Handle Upload Template File (Supports multiple & large files via smart chunking)
     async function handleTemplateUpload(e) {
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
@@ -750,26 +815,10 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             const file = files[i];
             uploadStatusText.textContent = `⏳ Uploading template (${i + 1}/${files.length}): ${file.name}...`;
 
-            const formData = new FormData();
-            formData.append('files', file);
-
             try {
-                const res = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData
+                await uploadSingleFileSmart(file, 'template', (msg) => {
+                    uploadStatusText.textContent = msg;
                 });
-
-                const contentType = res.headers.get('content-type') || '';
-                if (!contentType.includes('application/json')) {
-                    if (res.status === 413) {
-                        throw new Error(`File ${file.name} is too large (>4.5MB Vercel limit).`);
-                    }
-                    throw new Error(`Server error (HTTP ${res.status}).`);
-                }
-
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Upload failed');
-
                 successCount++;
             } catch (err) {
                 console.error(`Upload error for ${file.name}:`, err);
@@ -1576,29 +1625,12 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             const file = files[i];
             reviewUploadStatusText.textContent = `⏳ AI is scanning and auditing (${i + 1}/${files.length}): ${file.name}...`;
 
-            const formData = new FormData();
-            formData.append('files', file);
-
             try {
-                const res = await fetch('/api/review-multi-upload', {
-                    method: 'POST',
-                    body: formData
+                const data = await uploadSingleFileSmart(file, 'review', (msg) => {
+                    reviewUploadStatusText.textContent = msg;
                 });
 
-                const contentType = res.headers.get('content-type') || '';
-                if (!contentType.includes('application/json')) {
-                    if (res.status === 413) {
-                        throw new Error(`File ${file.name} is too large (>4.5MB Vercel limit).`);
-                    }
-                    throw new Error(`Server error (HTTP ${res.status}) while reviewing ${file.name}.`);
-                }
-
-                const data = await res.json();
-                if (!res.ok) {
-                    throw new Error(data.error || `Review of file ${file.name} failed.`);
-                }
-
-                if (data.reports && data.reports.length > 0) {
+                if (data && data.reports && data.reports.length > 0) {
                     allReports.push(...data.reports);
                 }
             } catch (err) {
