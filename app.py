@@ -22,13 +22,27 @@ from ai_assistant import audit_timesheet_data, process_ai_chat_command, apply_fi
 import openpyxl
 
 import tempfile
+import shutil
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'timesheets_extracted')
+
+# On Vercel the project root (/var/task/) is READ-ONLY.
+# Always use /tmp for writable template storage, seeding bundled templates on cold start.
+_BUNDLED_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'timesheets_extracted')
+TEMPLATE_DIR = os.path.join(tempfile.gettempdir(), 'timesheets_extracted')
 OUTPUT_DIR = os.path.join(tempfile.gettempdir(), 'generated_timesheets')
 
-# Ensure writable directories exist on cold start (Vercel /tmp is writable)
+os.makedirs(TEMPLATE_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Copy bundled templates into writable TEMPLATE_DIR on cold start (if not already present)
+if os.path.isdir(_BUNDLED_TEMPLATE_DIR):
+    for _f in os.listdir(_BUNDLED_TEMPLATE_DIR):
+        if _f.endswith('.xlsx'):
+            _src = os.path.join(_BUNDLED_TEMPLATE_DIR, _f)
+            _dst = os.path.join(TEMPLATE_DIR, _f)
+            if not os.path.exists(_dst):
+                shutil.copy2(_src, _dst)
 
 # In-memory store for custom members per domain
 CUSTOM_MEMBERS_STORE = {}

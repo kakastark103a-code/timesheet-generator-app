@@ -708,7 +708,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         if (!file) return;
 
         if (!file.name.endsWith('.xlsx')) {
-            alert('Vui lòng chọn tệp định dạng Excel (.xlsx).');
+            showNotification('Vui lòng chọn tệp định dạng Excel (.xlsx).', 'warning');
             return;
         }
 
@@ -721,6 +721,12 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
                 method: 'POST',
                 body: formData
             });
+
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                // Server returned HTML error page instead of JSON
+                throw new Error(`Server lỗi (HTTP ${res.status}). Vui lòng kiểm tra lại.`);
+            }
 
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Upload thất bại');
