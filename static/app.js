@@ -702,7 +702,7 @@ Duong Thi Tuyet Mai\tMaiDTT23\tDigital Domain\t7-May có 2 line Project Task => 
 Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     }
 
-    // Handle Upload Template File
+    // Handle Upload Template File (Supports multiple files, uploaded one by one to avoid Vercel 4.5MB payload limit)
     async function handleTemplateUpload(e) {
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
@@ -713,38 +713,53 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             return;
         }
 
-        const formData = new FormData();
-        files.forEach(file => {
+        let successCount = 0;
+        let errorCount = 0;
+        let lastErrorMsg = '';
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            uploadStatusText.textContent = `⏳ Đang upload template (${i + 1}/${files.length}): ${file.name}...`;
+
+            const formData = new FormData();
             formData.append('files', file);
-        });
-        uploadStatusText.textContent = `⏳ Đang upload ${files.length} file template...`;
 
-        try {
-            const res = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
+            try {
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
 
-            const contentType = res.headers.get('content-type') || '';
-            if (!contentType.includes('application/json')) {
-                throw new Error(`Server lỗi (HTTP ${res.status}). Vui lòng kiểm tra dung lượng file.`);
+                const contentType = res.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    if (res.status === 413) {
+                        throw new Error(`File ${file.name} quá lớn (>4.5MB giới hạn Vercel).`);
+                    }
+                    throw new Error(`Server lỗi (HTTP ${res.status}).`);
+                }
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Upload thất bại');
+
+                successCount++;
+            } catch (err) {
+                console.error(`Upload error for ${file.name}:`, err);
+                errorCount++;
+                lastErrorMsg = err.message;
             }
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Upload thất bại');
-
-            const count = data.filenames ? data.filenames.length : 1;
-            uploadStatusText.textContent = `✅ Đã upload thành công ${count} template domain!`;
-            setTimeout(() => { uploadStatusText.textContent = ''; }, 4000);
-
-            await loadDomains();
-        } catch (err) {
-            console.error('Upload error:', err);
-            uploadStatusText.textContent = `❌ Lỗi: ${err.message}`;
-        } finally {
-            templateFileInput.value = '';
         }
+
+        if (successCount > 0) {
+            uploadStatusText.textContent = `✅ Đã upload thành công ${successCount} template domain!`;
+            setTimeout(() => { uploadStatusText.textContent = ''; }, 4000);
+            await loadDomains();
+        } else {
+            uploadStatusText.textContent = `❌ Lỗi upload: ${lastErrorMsg || 'Không thể upload tệp đã chọn.'}`;
+        }
+
+        templateFileInput.value = '';
     }
+
 
 
     // Public Holidays Handling
