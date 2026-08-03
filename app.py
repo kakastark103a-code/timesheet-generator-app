@@ -113,27 +113,36 @@ def handle_members():
 
 @app.route('/api/upload', methods=['POST'])
 def upload_template():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
+    uploaded_files = request.files.getlist('files')
+    if not uploaded_files:
+        uploaded_files = request.files.getlist('file')
+    if not uploaded_files or len(uploaded_files) == 0:
+        return jsonify({'error': 'No files uploaded'}), 400
         
-    uploaded_file = request.files['file']
-    if not uploaded_file or uploaded_file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-        
-    filename = secure_filename(uploaded_file.filename)
-    if not filename.endswith('.xlsx'):
-        return jsonify({'error': 'Only Excel files (.xlsx) are allowed as template'}), 400
-        
-    save_path = os.path.join(TEMPLATE_DIR, filename)
     os.makedirs(TEMPLATE_DIR, exist_ok=True)
-    uploaded_file.save(save_path)
+    saved_filenames = []
     
+    for ufile in uploaded_files:
+        if not ufile or ufile.filename == '':
+            continue
+        filename = secure_filename(ufile.filename)
+        if not filename.endswith('.xlsx'):
+            continue
+        save_path = os.path.join(TEMPLATE_DIR, filename)
+        ufile.save(save_path)
+        saved_filenames.append(filename)
+        
+    if not saved_filenames:
+        return jsonify({'error': 'No valid Excel files (.xlsx) were uploaded'}), 400
+
     available_domains = scan_available_domain_templates(TEMPLATE_DIR)
     return jsonify({
-        'message': f'Template "{filename}" uploaded successfully!',
-        'filename': filename,
+        'message': f'Uploaded {len(saved_filenames)} template file(s) successfully!',
+        'filenames': saved_filenames,
+        'filename': saved_filenames[0],
         'domains_count': len(available_domains)
     })
+
 
 @app.route('/api/singapore-holidays', methods=['GET'])
 def get_sg_holidays():

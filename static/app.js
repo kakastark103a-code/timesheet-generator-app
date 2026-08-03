@@ -704,17 +704,20 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
     // Handle Upload Template File
     async function handleTemplateUpload(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
 
-        if (!file.name.endsWith('.xlsx')) {
-            showNotification('Vui lòng chọn tệp định dạng Excel (.xlsx).', 'warning');
+        const invalidFiles = files.filter(f => !f.name.endsWith('.xlsx'));
+        if (invalidFiles.length > 0) {
+            showNotification('Vui lòng chỉ chọn các tệp định dạng Excel (.xlsx).', 'warning');
             return;
         }
 
         const formData = new FormData();
-        formData.append('file', file);
-        uploadStatusText.textContent = '⏳ Đang upload...';
+        files.forEach(file => {
+            formData.append('files', file);
+        });
+        uploadStatusText.textContent = `⏳ Đang upload ${files.length} file template...`;
 
         try {
             const res = await fetch('/api/upload', {
@@ -724,14 +727,14 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
             const contentType = res.headers.get('content-type') || '';
             if (!contentType.includes('application/json')) {
-                // Server returned HTML error page instead of JSON
-                throw new Error(`Server lỗi (HTTP ${res.status}). Vui lòng kiểm tra lại.`);
+                throw new Error(`Server lỗi (HTTP ${res.status}). Vui lòng kiểm tra dung lượng file.`);
             }
 
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Upload thất bại');
 
-            uploadStatusText.textContent = `✅ Đã upload thành công template ${data.filename}!`;
+            const count = data.filenames ? data.filenames.length : 1;
+            uploadStatusText.textContent = `✅ Đã upload thành công ${count} template domain!`;
             setTimeout(() => { uploadStatusText.textContent = ''; }, 4000);
 
             await loadDomains();
@@ -742,6 +745,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             templateFileInput.value = '';
         }
     }
+
 
     // Public Holidays Handling
     function addPublicHoliday() {
@@ -1500,36 +1504,70 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     });
 
     async function handleMultiReviewFileUpload(e) {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
 
-        const formData = new FormData();
+        reviewUploadStatusText.textContent = `⏳ AI đang chuẩn bị quét và phân tích ${files.length} tệp Timesheet...`;
+
+        const allReports = [];
+        let errorCount = 0;
+        let lastErrorMsg = '';
+
         for (let i = 0; i < files.length; i++) {
-            formData.append('files', files[i]);
+            const file = files[i];
+            reviewUploadStatusText.textContent = `⏳ AI đang quét và phân tích tệp (${i + 1}/${files.length}): ${file.name}...`;
+
+            const formData = new FormData();
+            formData.append('files', file);
+
+            try {
+                const res = await fetch('/api/review-multi-upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const contentType = res.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    if (res.status === 413) {
+                        throw new Error(`Tệp ${file.name} quá lớn (vượt quá 4.5MB giới hạn Vercel).`);
+                    }
+                    throw new Error(`Server báo lỗi (HTTP ${res.status}) khi rà soát ${file.name}.`);
+                }
+
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || `Review tệp ${file.name} thất bại.`);
+                }
+
+                if (data.reports && data.reports.length > 0) {
+                    allReports.push(...data.reports);
+                }
+            } catch (err) {
+                console.error(`Error reviewing file ${file.name}:`, err);
+                errorCount++;
+                lastErrorMsg = err.message;
+            }
         }
 
-        reviewUploadStatusText.textContent = `⏳ AI đang quét và phân tích rà soát ${files.length} tệp Timesheet...`;
-
-        try {
-            const res = await fetch('/api/review-multi-upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Review thất bại');
-
-            currentReviewReports = data.reports || [];
-            activeFileIdx = 0;
-            reviewUploadStatusText.textContent = `✅ Đã hoàn tất rà soát ${currentReviewReports.length} tệp Timesheet!`;
-
-            renderExecutiveKPIMetrics();
-            renderFileTabsNavigation();
-            renderActiveFileWorkspace();
-        } catch (err) {
-            reviewUploadStatusText.textContent = `❌ Lỗi rà soát: ${err.message}`;
+        if (allReports.length === 0) {
+            reviewUploadStatusText.textContent = `❌ Lỗi rà soát: ${lastErrorMsg || 'Không thể đọc được dữ liệu các tệp đã chọn.'}`;
+            return;
         }
+
+        currentReviewReports = allReports;
+        activeFileIdx = 0;
+
+        if (errorCount > 0) {
+            reviewUploadStatusText.textContent = `⚠️ Đã rà soát ${allReports.length}/${files.length} tệp (Lỗi ${errorCount} tệp: ${lastErrorMsg})`;
+        } else {
+            reviewUploadStatusText.textContent = `✅ Đã hoàn tất rà soát ${allReports.length} tệp Timesheet!`;
+        }
+
+        renderExecutiveKPIMetrics();
+        renderFileTabsNavigation();
+        renderActiveFileWorkspace();
     }
+
 
     function renderExecutiveKPIMetrics() {
         let totalFiles = currentReviewReports.length;
@@ -1873,8 +1911,15 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             });
 
             if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.error || 'Lỗi áp dụng fix');
+                const contentType = res.headers.get('content-type') || '';
+                let errMsg = 'Lỗi áp dụng fix';
+                if (contentType.includes('application/json')) {
+                    const errData = await res.json().catch(() => ({}));
+                    errMsg = errData.error || errMsg;
+                } else {
+                    errMsg = `Server báo lỗi (HTTP ${res.status})`;
+                }
+                throw new Error(errMsg);
             }
 
             const blob = await res.blob();
