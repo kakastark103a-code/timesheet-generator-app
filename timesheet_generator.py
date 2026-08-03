@@ -923,6 +923,7 @@ def clear_all_worksheet_filters(wb):
 def find_template_path(domain_key: str, template_dir: str = 'timesheets_extracted'):
     """
     Finds template file path for a domain key or filename matching.
+    Falls back to first available template if custom or unknown domain.
     """
     domains = scan_available_domain_templates(template_dir)
     if domain_key in domains:
@@ -932,4 +933,13 @@ def find_template_path(domain_key: str, template_dir: str = 'timesheets_extracte
     matched = glob.glob(pattern)
     if matched:
         return matched[0]
+
+    if domains:
+        first_key = list(domains.keys())[0]
+        return domains[first_key]['filepath']
+
+    all_xlsx = glob.glob(os.path.join(template_dir, "*.xlsx"))
+    if all_xlsx:
+        return sorted(all_xlsx)[0]
+
     return None

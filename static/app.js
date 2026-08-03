@@ -1390,7 +1390,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
     async function generateIndividualTimesheet() {
         const monthVal = indivMonthSelect.value || state.selectedMonth;
-        let domainVal = indivDomainSelect.value || 'cbg';
+        let domainVal = indivDomainSelect.value || 'identity';
         if (domainVal === '__custom_domain__') {
             const customDomText = inputCustomDomainName ? inputCustomDomainName.value.trim() : '';
             domainVal = customDomText || 'Custom_Domain';
