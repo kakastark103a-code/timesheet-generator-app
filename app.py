@@ -17,6 +17,7 @@ from timesheet_generator import (
     extract_resources_from_timesheet,
     extract_resources_from_any_sheet,
     parse_comment_notes,
+    trim_and_optimize_workbook,
     DOMAIN_FILE_MAP,
     DOMAIN_NAMES
 )
@@ -640,6 +641,7 @@ def apply_fixes_and_download():
         try:
             wb = openpyxl.load_workbook(src_path)
             apply_fixes_to_workbook(wb, fix_actions)
+            trim_and_optimize_workbook(wb)
             
             out_filename = f"Fixed_{filename}"
             out_path = os.path.join(OUTPUT_DIR, f"_result_{out_filename}")

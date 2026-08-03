@@ -1014,10 +1014,53 @@ def generate_domain_timesheet(template_path: str, year: int, month: int, output_
     # 4. Automatically clear active column filters across all worksheets
     clear_all_worksheet_filters(wb)
 
+    # 5. Trim unused trailing rows & clean cell dimensions to optimize file size
+    trim_and_optimize_workbook(wb, max_ts_row=current_row - 1, res_count=res_count)
+
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     wb.save(output_path)
     wb.close()
     return output_path
+
+def trim_and_optimize_workbook(wb, max_ts_row=None, res_count=None):
+    """
+    Scans all worksheets in the workbook, removes unused blank rows & columns past actual content,
+    and cleans up unneeded row_dimensions to dramatically reduce generated Excel file size.
+    """
+    for ws in wb.worksheets:
+        title_lower = ws.title.lower()
+
+        # 1. Determine actual last valid content row for this sheet
+        actual_last_row = 1
+
+        if title_lower == 'timesheet' and max_ts_row:
+            actual_last_row = max_ts_row
+        elif title_lower == 'summary' and res_count is not None:
+            actual_last_row = 1 + res_count  # 1 header row + N members
+        elif title_lower in ['balance leave', 'leave balance'] and res_count is not None:
+            actual_last_row = 2 + res_count  # 2 header rows + N members
+        else:
+            # General content row scan
+            for r in range(ws.max_row, 0, -1):
+                has_content = False
+                for c in range(1, min(ws.max_column + 1, 35)):
+                    val = ws.cell(r, c).value
+                    if val is not None and str(val).strip() != '':
+                        has_content = True
+                        break
+                if has_content:
+                    actual_last_row = r
+                    break
+
+        # 2. Delete empty trailing rows
+        if ws.max_row > actual_last_row:
+            rows_to_delete = ws.max_row - actual_last_row
+            ws.delete_rows(actual_last_row + 1, rows_to_delete)
+
+        # 3. Remove row_dimensions for deleted rows
+        invalid_rows = [r for r in list(ws.row_dimensions.keys()) if r > actual_last_row]
+        for r in invalid_rows:
+            del ws.row_dimensions[r]
 
 def clear_all_worksheet_filters(wb):
     """
