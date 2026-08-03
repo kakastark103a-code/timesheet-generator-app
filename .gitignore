@@ -13,7 +13,6 @@ ENV/
 output/
 downloads/
 generated_timesheets/
-timesheets_extracted/
 *.zip
 *.log
 .DS_Store
