@@ -89,33 +89,41 @@ MEMBERS_PARSED_CACHE = {}
 def get_members_for_domain_file(template_path):
     if not template_path or not os.path.exists(template_path):
         return []
+        
     mtime = os.path.getmtime(template_path)
     cache_key = f"{template_path}_{mtime}"
-    if cache_key in MEMBERS_PARSED_CACHE:
+    if cache_key in MEMBERS_PARSED_CACHE and len(MEMBERS_PARSED_CACHE[cache_key]) > 0:
         return MEMBERS_PARSED_CACHE[cache_key]
         
-    try:
-        # First try data_only=True (for evaluated values)
-        wb = openpyxl.load_workbook(template_path, data_only=True)
-        members = extract_resources_from_summary(wb)
-        if not members:
-            sheet_ts = wb['Timesheet'] if 'Timesheet' in wb.sheetnames else None
-            members = extract_resources_from_timesheet(sheet_ts) if sheet_ts else []
-        wb.close()
-
-        # Fallback to data_only=False (for resolving formula references like =Timesheet!G2)
-        if not members:
-            wb_raw = openpyxl.load_workbook(template_path, data_only=False)
-            members = extract_resources_from_summary(wb_raw)
+    import time
+    for attempt in range(3):
+        try:
+            # First try data_only=True (for evaluated values)
+            wb = openpyxl.load_workbook(template_path, data_only=True)
+            members = extract_resources_from_summary(wb)
             if not members:
-                members = extract_resources_from_any_sheet(wb_raw)
-            wb_raw.close()
+                sheet_ts = wb['Timesheet'] if 'Timesheet' in wb.sheetnames else None
+                members = extract_resources_from_timesheet(sheet_ts) if sheet_ts else []
+            wb.close()
 
-        MEMBERS_PARSED_CACHE[cache_key] = members
-        return members
-    except Exception as e:
-        print(f"Error extracting members from {template_path}: {e}")
-        return []
+            # Fallback to data_only=False (for resolving formula references like =Timesheet!G2)
+            if not members:
+                wb_raw = openpyxl.load_workbook(template_path, data_only=False)
+                members = extract_resources_from_summary(wb_raw)
+                if not members:
+                    members = extract_resources_from_any_sheet(wb_raw)
+                wb_raw.close()
+
+            if members and len(members) > 0:
+                MEMBERS_PARSED_CACHE[cache_key] = members
+                return members
+            else:
+                time.sleep(0.3)
+        except Exception as e:
+            print(f"Attempt {attempt+1} error extracting members from {template_path}: {e}")
+            time.sleep(0.3)
+
+    return []
 
 def warmup_members_cache():
     try:
@@ -169,6 +177,13 @@ def optimize_template_file(file_path):
     except Exception as e:
         print(f"Failed to optimize template {file_path}: {e}")
 
+def optimize_template_file_async(file_path):
+    def _worker():
+        MEMBERS_PARSED_CACHE.clear()
+        optimize_template_file(file_path)
+        warmup_members_cache()
+    threading.Thread(target=_worker, daemon=True).start()
+
 @app.route('/api/upload', methods=['POST'])
 def upload_template():
     uploaded_files = request.files.getlist('files')
@@ -188,7 +203,7 @@ def upload_template():
             continue
         save_path = os.path.join(TEMPLATE_DIR, filename)
         ufile.save(save_path)
-        optimize_template_file(save_path)
+        optimize_template_file_async(save_path)
         saved_filenames.append(filename)
         
     if not saved_filenames:

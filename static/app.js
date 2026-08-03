@@ -832,8 +832,14 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             uploadStatusText.textContent = `✅ Successfully uploaded ${successCount} domain template(s)!`;
             setTimeout(() => { uploadStatusText.textContent = ''; }, 4000);
             await loadDomains();
-            if (state.currentMemberDomain) {
-                await loadMembersForDomain(state.currentMemberDomain, true);
+            
+            // Refetch members for all uploaded domains so every domain updates its member list immediately
+            if (state.domains && state.domains.length > 0) {
+                for (const d of state.domains) {
+                    if (d.available) {
+                        await loadMembersForDomain(d.key, true);
+                    }
+                }
             }
         } else {
             uploadStatusText.textContent = `❌ Upload error: ${lastErrorMsg || 'Unable to upload selected file(s).'}`;
