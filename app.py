@@ -14,6 +14,7 @@ from timesheet_generator import (
     scan_available_domain_templates,
     extract_resources_from_summary,
     extract_resources_from_timesheet,
+    extract_resources_from_any_sheet,
     parse_comment_notes,
     DOMAIN_FILE_MAP,
     DOMAIN_NAMES
@@ -80,26 +81,65 @@ def get_domains():
             
     return jsonify({'domains': domains_list})
 
+MEMBERS_PARSED_CACHE = {}
+
+def get_members_for_domain_file(template_path):
+    if not template_path or not os.path.exists(template_path):
+        return []
+    mtime = os.path.getmtime(template_path)
+    cache_key = f"{template_path}_{mtime}"
+    if cache_key in MEMBERS_PARSED_CACHE:
+        return MEMBERS_PARSED_CACHE[cache_key]
+        
+    try:
+        # First try data_only=True (for evaluated values)
+        wb = openpyxl.load_workbook(template_path, data_only=True)
+        members = extract_resources_from_summary(wb)
+        if not members:
+            sheet_ts = wb['Timesheet'] if 'Timesheet' in wb.sheetnames else None
+            members = extract_resources_from_timesheet(sheet_ts) if sheet_ts else []
+        wb.close()
+
+        # Fallback to data_only=False (for resolving formula references like =Timesheet!G2)
+        if not members:
+            wb_raw = openpyxl.load_workbook(template_path, data_only=False)
+            members = extract_resources_from_summary(wb_raw)
+            if not members:
+                members = extract_resources_from_any_sheet(wb_raw)
+            wb_raw.close()
+
+        MEMBERS_PARSED_CACHE[cache_key] = members
+        return members
+    except Exception as e:
+        print(f"Error extracting members from {template_path}: {e}")
+        return []
+
+def warmup_members_cache():
+    try:
+        available_domains = scan_available_domain_templates(TEMPLATE_DIR)
+        for domain_key in available_domains:
+            template_path = find_template_path(domain_key, TEMPLATE_DIR, allow_fallback=False)
+            if template_path:
+                get_members_for_domain_file(template_path)
+    except Exception:
+        pass
+
+import threading
+threading.Thread(target=warmup_members_cache, daemon=True).start()
+
 @app.route('/api/members', methods=['GET', 'POST'])
 def handle_members():
     if request.method == 'GET':
         domain_key = request.args.get('domain', 'cbg')
-        if domain_key in CUSTOM_MEMBERS_STORE:
+        if domain_key in CUSTOM_MEMBERS_STORE and CUSTOM_MEMBERS_STORE[domain_key]:
             return jsonify({'domain': domain_key, 'members': CUSTOM_MEMBERS_STORE[domain_key]})
             
-        template_path = find_template_path(domain_key, TEMPLATE_DIR)
+        template_path = find_template_path(domain_key, TEMPLATE_DIR, allow_fallback=False)
         if not template_path:
             return jsonify({'domain': domain_key, 'members': []})
-            
-        try:
-            wb = openpyxl.load_workbook(template_path, data_only=True)
-            members = extract_resources_from_summary(wb)
-            if not members:
-                members = extract_resources_from_timesheet(wb['Timesheet']) if 'Timesheet' in wb.sheetnames else []
-            wb.close()
-            return jsonify({'domain': domain_key, 'members': members})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+
+        members = get_members_for_domain_file(template_path)
+        return jsonify({'domain': domain_key, 'members': members})
             
     elif request.method == 'POST':
         data = request.json or {}

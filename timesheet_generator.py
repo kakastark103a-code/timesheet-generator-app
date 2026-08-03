@@ -118,39 +118,117 @@ def scan_available_domain_templates(template_dir: str = 'timesheets_extracted'):
         }
     return domains
 
+def resolve_formula_cell(wb, val):
+    """
+    Resolves formula cell references like '=Timesheet!G2' or '=Summary!B2' to actual cell values.
+    """
+    if val is None:
+        return ""
+    val_str = str(val).strip()
+    if val_str.startswith('='):
+        m = re.match(r'^=([A-Za-z0-9_ -]+)!([A-Z]+)(\d+)$', val_str, re.IGNORECASE)
+        if m:
+            target_sheet_name, col_str, row_str = m.group(1), m.group(2), int(m.group(3))
+            target_sheet = None
+            for name in wb.sheetnames:
+                if name.strip().lower() == target_sheet_name.strip().lower():
+                    target_sheet = wb[name]
+                    break
+            if target_sheet:
+                col_num = 0
+                for char in col_str.upper():
+                    col_num = col_num * 26 + (ord(char) - ord('A') + 1)
+                resolved_val = target_sheet.cell(row_str, col_num).value
+                if resolved_val is not None and not str(resolved_val).startswith('='):
+                    return str(resolved_val).strip()
+    return val_str
+
 def extract_resources_from_summary(wb):
     """
     Extracts resource list with metadata (Name, Team, Lead, Location) from Summary sheet.
+    Supports flexible header row scanning, formula resolution, and Vietnamese/English col headers.
     """
-    if 'Summary' not in wb.sheetnames:
+    summary_sheet = None
+    for name in wb.sheetnames:
+        if any(k in name.lower() for k in ['summary', 'danh sách', 'resource', 'nhân viên', 'member']):
+            summary_sheet = wb[name]
+            break
+    if not summary_sheet:
         return []
-    sheet = wb['Summary']
+
+    sheet = summary_sheet
     resources = []
     
+    header_row = 1
     col_map = {}
-    for c in range(1, sheet.max_column + 1):
-        v = sheet.cell(1, c).value
-        if v:
-            col_map[str(v).strip().lower()] = c
-            
-    name_col = col_map.get('name', 2)
-    team_col = col_map.get('team', 3)
-    lead_col = col_map.get('lead', 4)
-    loc_col = col_map.get('location', 5)
     
-    for r in range(2, sheet.max_row + 1):
-        name = sheet.cell(r, name_col).value
-        if not name or str(name).startswith('='):
+    # Scan top 5 rows to find header row containing any member name column keyword
+    for r in range(1, min(6, sheet.max_row + 1)):
+        row_map = {}
+        for c in range(1, sheet.max_column + 1):
+            val = sheet.cell(r, c).value
+            if val:
+                row_map[str(val).strip().lower()] = c
+        if any(k in row_map for k in ['name', 'resource', 'member', 'full name', 'họ tên', 'nhân viên', 'họ và tên', 'staff', 'employee']):
+            header_row = r
+            col_map = row_map
+            break
+
+    name_col = None
+    for k in ['name', 'resource', 'member', 'full name', 'họ tên', 'nhân viên', 'họ và tên', 'staff', 'employee']:
+        if k in col_map:
+            name_col = col_map[k]
+            break
+    if not name_col:
+        name_col = 2  # default Col B
+
+    team_col = None
+    for k in ['team', 'phòng ban', 'bộ phận', 'group']:
+        if k in col_map:
+            team_col = col_map[k]
+            break
+    if not team_col:
+        team_col = 3
+
+    lead_col = None
+    for k in ['lead', 'leader', 'quản lý']:
+        if k in col_map:
+            lead_col = col_map[k]
+            break
+    if not lead_col:
+        lead_col = 4
+
+    loc_col = None
+    for k in ['location', 'vị trí', 'onsite/offshore', 'role']:
+        if k in col_map:
+            loc_col = col_map[k]
+            break
+    if not loc_col:
+        loc_col = 5
+
+    for r in range(header_row + 1, sheet.max_row + 1):
+        raw_name = sheet.cell(r, name_col).value
+        if not raw_name:
             continue
-        team = sheet.cell(r, team_col).value or ""
-        lead = sheet.cell(r, lead_col).value if 'lead' in col_map else ""
-        loc = sheet.cell(r, loc_col).value or "Offshore"
+            
+        resolved_name = resolve_formula_cell(wb, raw_name)
+        if not resolved_name or resolved_name.startswith('='):
+            continue
+            
+        name_clean = str(resolved_name).strip()
+        if name_clean.lower() in ['total', 'tổng', 'stt', 'no', 'none', 'name', 'resource', 'họ và tên', '0']:
+            continue
+            
+        team_val = sheet.cell(r, team_col).value if team_col else ""
+        lead_val = sheet.cell(r, lead_col).value if lead_col else ""
+        loc_val = sheet.cell(r, loc_col).value if loc_col else "Offshore"
+        
         resources.append({
             'row': r,
-            'name': str(name).strip(),
-            'team': str(team).strip(),
-            'lead': str(lead).strip() if lead else "",
-            'location': str(loc).strip(),
+            'name': name_clean,
+            'team': str(resolve_formula_cell(wb, team_val) or "").strip(),
+            'lead': str(resolve_formula_cell(wb, lead_val) or "").strip(),
+            'location': str(resolve_formula_cell(wb, loc_val) or "Offshore").strip(),
             'vendor': 'FPT',
             'total_leave': 14,
             'leave_balance_upto': 10
@@ -159,27 +237,70 @@ def extract_resources_from_summary(wb):
 
 def extract_resources_from_timesheet(sheet_ts):
     """
-    Extracts distinct resources, team, vendor from existing Timesheet sheet if Summary is unavailable.
+    Extracts distinct resources, team, vendor from Timesheet sheet if Summary is unavailable or empty.
+    Dynamically locates Resource/Name columns across top rows.
     """
+    if not sheet_ts:
+        return []
+        
+    wb = sheet_ts.parent
+    header_row = 1
+    name_col = 7  # Default Col G
+    team_col = 8  # Default Col H
+    vendor_col = 9  # Default Col I
+    
+    # Scan top 5 rows for header matching
+    for r in range(1, min(6, sheet_ts.max_row + 1)):
+        for c in range(1, sheet_ts.max_column + 1):
+            val = sheet_ts.cell(r, c).value
+            if val:
+                val_str = str(val).strip().lower()
+                if val_str in ['resource', 'name', 'full name', 'member', 'nhân viên', 'họ và tên', 'staff']:
+                    name_col = c
+                    header_row = r
+                elif val_str in ['team', 'bộ phận', 'phòng ban']:
+                    team_col = c
+                elif val_str in ['vendor', 'vendor name', 'công ty']:
+                    vendor_col = c
+
     resources_map = {}
-    for r in range(2, sheet_ts.max_row + 1):
-        res = sheet_ts.cell(r, 7).value  # Col G Resource
-        if not res or str(res).strip() == "" or str(res).startswith('='):
+    for r in range(header_row + 1, sheet_ts.max_row + 1):
+        raw_res = sheet_ts.cell(r, name_col).value
+        if not raw_res:
             continue
-        res_name = str(res).strip()
-        if res_name not in resources_map:
-            team = sheet_ts.cell(r, 8).value or ""
-            vendor = sheet_ts.cell(r, 9).value or "FPT"
-            resources_map[res_name] = {
-                'name': res_name,
-                'team': str(team).strip(),
+        res_name = resolve_formula_cell(wb, raw_res)
+        if not res_name or res_name.startswith('='):
+            continue
+            
+        res_clean = str(res_name).strip()
+        if res_clean.lower() in ['total', 'tổng', 'stt', 'no', 'resource', 'name', 'họ và tên', '0']:
+            continue
+            
+        if res_clean not in resources_map:
+            team_val = sheet_ts.cell(r, team_col).value if team_col else ""
+            vendor_val = sheet_ts.cell(r, vendor_col).value if vendor_col else "FPT"
+            
+            resources_map[res_clean] = {
+                'name': res_clean,
+                'team': str(resolve_formula_cell(wb, team_val) or "").strip(),
                 'lead': '',
                 'location': 'Offshore',
-                'vendor': str(vendor).strip(),
+                'vendor': str(resolve_formula_cell(wb, vendor_val) or "FPT").strip(),
                 'total_leave': 14,
                 'leave_balance_upto': 10
             }
     return list(resources_map.values())
+
+def extract_resources_from_any_sheet(wb):
+    """
+    Fallback extractor scanning all sheets for person names if standard sheets return no members.
+    """
+    for ws in wb.worksheets:
+        m_list = extract_resources_from_timesheet(ws)
+        if m_list:
+            return m_list
+    return []
+
 
 def find_and_read_prev_month_leave_balances(domain_key: str, year: int, month: int, search_dirs=None):
     """
@@ -920,26 +1041,66 @@ def clear_all_worksheet_filters(wb):
             if ws.max_row > 1 and ws.max_column > 1:
                 ws.auto_filter.ref = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
 
-def find_template_path(domain_key: str, template_dir: str = 'timesheets_extracted'):
+def find_template_path(domain_key: str, template_dir: str = 'timesheets_extracted', allow_fallback: bool = True):
     """
-    Finds template file path for a domain key or filename matching.
-    Falls back to first available template if custom or unknown domain.
+    Finds template file path for a domain key by checking exact keys, substrings, tokens, or filenames.
+    Only falls back to default base template if allow_fallback=True.
     """
+    if not domain_key:
+        return None
+
     domains = scan_available_domain_templates(template_dir)
-    if domain_key in domains:
-        return domains[domain_key]['filepath']
-            
-    pattern = os.path.join(template_dir, f"*{domain_key}*.xlsx")
+    domain_key_clean = str(domain_key).strip().lower()
+
+    # 1. Exact key match in scanned domains
+    if domain_key_clean in domains:
+        return domains[domain_key_clean]['filepath']
+
+    # 2. Key match in predefined DOMAIN_FILE_MAP
+    if domain_key_clean in DOMAIN_FILE_MAP:
+        fname = DOMAIN_FILE_MAP[domain_key_clean]
+        fpath = os.path.join(template_dir, fname)
+        if os.path.exists(fpath):
+            return fpath
+
+    # 3. Substring match against scanned keys or filenames
+    for k, info in domains.items():
+        if domain_key_clean in k or k in domain_key_clean:
+            return info['filepath']
+        if domain_key_clean in info['filename'].lower():
+            return info['filepath']
+
+    # 4. Tokenized search on filename in template_dir
+    tokens = [t for t in re.split(r'[_ -]+', domain_key_clean) if t and t not in ['fpt', 'domain', 'timesheet', 'template', 'xlsx']]
+    all_files = glob.glob(os.path.join(template_dir, "*.xlsx"))
+    
+    if tokens and all_files:
+        best_match = None
+        best_score = 0
+        for fpath in all_files:
+            fname_lower = os.path.basename(fpath).lower()
+            score = sum(1 for tok in tokens if tok in fname_lower)
+            if score > best_score:
+                best_score = score
+                best_match = fpath
+        if best_match and best_score > 0:
+            return best_match
+
+    # 5. Wildcard glob matching
+    pattern = os.path.join(template_dir, f"*{domain_key_clean}*.xlsx")
     matched = glob.glob(pattern)
     if matched:
         return matched[0]
 
-    if domains:
-        first_key = list(domains.keys())[0]
-        return domains[first_key]['filepath']
+    # 6. Fallback only if allow_fallback is True
+    if allow_fallback:
+        if domains:
+            first_key = list(domains.keys())[0]
+            return domains[first_key]['filepath']
 
-    all_xlsx = glob.glob(os.path.join(template_dir, "*.xlsx"))
-    if all_xlsx:
-        return sorted(all_xlsx)[0]
+        all_xlsx = glob.glob(os.path.join(template_dir, "*.xlsx"))
+        if all_xlsx:
+            return sorted(all_xlsx)[0]
 
     return None
+

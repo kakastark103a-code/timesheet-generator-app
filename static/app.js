@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const langLabel = document.getElementById('langLabel');
 
     let currentTheme = localStorage.getItem('app_theme') || 'dark';
-    let currentLang = localStorage.getItem('app_lang') || 'vi';
+    let currentLang = 'en';
 
     const i18nData = {
         vi: {
@@ -327,6 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const memberDomainSelect = document.getElementById('memberDomainSelect');
     const membersTableBody = document.getElementById('membersTableBody');
     const btnAddNewMember = document.getElementById('btnAddNewMember');
+    const btnRefreshMembers = document.getElementById('btnRefreshMembers');
     
     const memberModal = document.getElementById('memberModal');
     const modalTitle = document.getElementById('modalTitle');
@@ -435,6 +436,13 @@ document.addEventListener('DOMContentLoaded', () => {
             loadMembersForDomain(state.currentMemberDomain);
         });
 
+        if (btnRefreshMembers) {
+            btnRefreshMembers.addEventListener('click', () => {
+                loadMembersForDomain(state.currentMemberDomain, true);
+                showNotification('✅ Đã tải lại danh sách nhân viên từ template!', 'success');
+            });
+        }
+
         btnAddNewMember.addEventListener('click', openAddMemberModal);
         btnModalClose.addEventListener('click', closeMemberModal);
         btnModalCancel.addEventListener('click', closeMemberModal);
@@ -527,8 +535,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderMemberDomainDropdown() {
         memberDomainSelect.innerHTML = state.domains.map(d => `
-            <option value="${d.key}">${d.name}</option>
+            <option value="${d.key}" ${d.key === state.currentMemberDomain ? 'selected' : ''}>${d.name}</option>
         `).join('');
+        if (state.domains.length > 0 && !state.domains.some(d => d.key === state.currentMemberDomain)) {
+            state.currentMemberDomain = state.domains[0].key;
+        }
+        if (state.currentMemberDomain) {
+            memberDomainSelect.value = state.currentMemberDomain;
+        }
     }
 
     function toggleSelectAllDomains() {
@@ -543,21 +557,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Member Management
-    async function loadMembersForDomain(domainKey) {
-        if (state.membersByDomain[domainKey]) {
+    async function loadMembersForDomain(domainKey, forceRefresh = false) {
+        if (!domainKey) return;
+        if (!forceRefresh && state.membersByDomain[domainKey] !== undefined) {
             renderMembersTable(state.membersByDomain[domainKey]);
             return;
         }
 
+        const isEn = currentLang === 'en';
+        const loadingMsg = isEn ? 'Loading members...' : 'Đang tải danh sách nhân viên...';
+        membersTableBody.innerHTML = `
+            <tr>
+                <td colspan="7">
+                    <div class="table-loading-spinner-container">
+                        <div class="inline-spinner"></div>
+                        <span>${loadingMsg}</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+
         try {
-            const res = await fetch(`/api/members?domain=${domainKey}`);
+            const url = forceRefresh ? `/api/members?domain=${domainKey}&_t=${Date.now()}` : `/api/members?domain=${domainKey}`;
+            const res = await fetch(url);
             const data = await res.json();
             const members = data.members || [];
             state.membersByDomain[domainKey] = members;
             renderMembersTable(members);
         } catch (err) {
             console.error('Failed to load members:', err);
-            membersTableBody.innerHTML = `<tr><td colspan="7">Lỗi tải danh sách nhân viên</td></tr>`;
+            membersTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">${isEn ? 'Failed to load members' : 'Lỗi tải danh sách nhân viên'}</td></tr>`;
         }
     }
 
@@ -709,7 +738,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
         const invalidFiles = files.filter(f => !f.name.endsWith('.xlsx'));
         if (invalidFiles.length > 0) {
-            showNotification('Vui lòng chỉ chọn các tệp định dạng Excel (.xlsx).', 'warning');
+            showNotification('Please select Excel (.xlsx) files only.', 'warning');
             return;
         }
 
@@ -719,7 +748,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            uploadStatusText.textContent = `⏳ Đang upload template (${i + 1}/${files.length}): ${file.name}...`;
+            uploadStatusText.textContent = `⏳ Uploading template (${i + 1}/${files.length}): ${file.name}...`;
 
             const formData = new FormData();
             formData.append('files', file);
@@ -733,13 +762,13 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
                 const contentType = res.headers.get('content-type') || '';
                 if (!contentType.includes('application/json')) {
                     if (res.status === 413) {
-                        throw new Error(`File ${file.name} quá lớn (>4.5MB giới hạn Vercel).`);
+                        throw new Error(`File ${file.name} is too large (>4.5MB Vercel limit).`);
                     }
-                    throw new Error(`Server lỗi (HTTP ${res.status}).`);
+                    throw new Error(`Server error (HTTP ${res.status}).`);
                 }
 
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Upload thất bại');
+                if (!res.ok) throw new Error(data.error || 'Upload failed');
 
                 successCount++;
             } catch (err) {
@@ -750,11 +779,15 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         }
 
         if (successCount > 0) {
-            uploadStatusText.textContent = `✅ Đã upload thành công ${successCount} template domain!`;
+            state.membersByDomain = {}; // Clear cached members so newly uploaded templates refetch member list!
+            uploadStatusText.textContent = `✅ Successfully uploaded ${successCount} domain template(s)!`;
             setTimeout(() => { uploadStatusText.textContent = ''; }, 4000);
             await loadDomains();
+            if (state.currentMemberDomain) {
+                await loadMembersForDomain(state.currentMemberDomain, true);
+            }
         } else {
-            uploadStatusText.textContent = `❌ Lỗi upload: ${lastErrorMsg || 'Không thể upload tệp đã chọn.'}`;
+            uploadStatusText.textContent = `❌ Upload error: ${lastErrorMsg || 'Unable to upload selected file(s).'}`;
         }
 
         templateFileInput.value = '';
@@ -864,11 +897,17 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     // Generate & Download Excel Timesheets
     async function generateTimesheets() {
         if (!state.selectedDomainKeys.length) {
-            alert('Vui lòng chọn ít nhất 1 Domain để tạo timesheet.');
+            const isEn = currentLang === 'en';
+            alert(isEn ? 'Please select at least 1 Domain to generate timesheet.' : 'Vui lòng chọn ít nhất 1 Domain để tạo timesheet.');
             return;
         }
 
-        showLoading('Đang xử lý và khởi tạo file Excel Timesheet...');
+        const isEn = currentLang === 'en';
+        showLoading(
+            isEn ? 'Generating Excel Timesheets...' : 'Đang khởi tạo các file Excel Timesheet...',
+            isEn ? 'Processing selected domain templates & formulas...' : 'Đang xử lý dữ liệu và công thức các Domain...'
+        );
+        startSimulatedProgress(15, 92, 250);
 
         try {
             const response = await fetch('/api/generate', {
@@ -1427,8 +1466,13 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             memberToGen = currentIndivMember;
         }
 
-        const genName = memberToGen ? memberToGen.name : `Template mẫu (${domainVal.toUpperCase()})`;
-        showLoading(`Đang khởi tạo Timesheet cá nhân cho ${genName}...`);
+        const genName = memberToGen ? memberToGen.name : `Sample Template (${domainVal.toUpperCase()})`;
+        const isEn = currentLang === 'en';
+        showLoading(
+            isEn ? `Generating Member Timesheet for ${genName}...` : `Đang khởi tạo Timesheet cá nhân cho ${genName}...`,
+            isEn ? 'Computing leave balance & activity overrides...' : 'Đang tính toán số dư phép & điều chỉnh hoạt động...'
+        );
+        startSimulatedProgress(20, 92, 200);
 
         try {
             const response = await fetch('/api/generate-individual', {
@@ -1522,7 +1566,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
 
-        reviewUploadStatusText.textContent = `⏳ AI đang chuẩn bị quét và phân tích ${files.length} tệp Timesheet...`;
+        reviewUploadStatusText.textContent = `⏳ Preparing to scan and audit ${files.length} timesheet file(s)...`;
 
         const allReports = [];
         let errorCount = 0;
@@ -1530,7 +1574,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            reviewUploadStatusText.textContent = `⏳ AI đang quét và phân tích tệp (${i + 1}/${files.length}): ${file.name}...`;
+            reviewUploadStatusText.textContent = `⏳ AI is scanning and auditing (${i + 1}/${files.length}): ${file.name}...`;
 
             const formData = new FormData();
             formData.append('files', file);
@@ -1544,14 +1588,14 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
                 const contentType = res.headers.get('content-type') || '';
                 if (!contentType.includes('application/json')) {
                     if (res.status === 413) {
-                        throw new Error(`Tệp ${file.name} quá lớn (vượt quá 4.5MB giới hạn Vercel).`);
+                        throw new Error(`File ${file.name} is too large (>4.5MB Vercel limit).`);
                     }
-                    throw new Error(`Server báo lỗi (HTTP ${res.status}) khi rà soát ${file.name}.`);
+                    throw new Error(`Server error (HTTP ${res.status}) while reviewing ${file.name}.`);
                 }
 
                 const data = await res.json();
                 if (!res.ok) {
-                    throw new Error(data.error || `Review tệp ${file.name} thất bại.`);
+                    throw new Error(data.error || `Review of file ${file.name} failed.`);
                 }
 
                 if (data.reports && data.reports.length > 0) {
@@ -1565,7 +1609,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         }
 
         if (allReports.length === 0) {
-            reviewUploadStatusText.textContent = `❌ Lỗi rà soát: ${lastErrorMsg || 'Không thể đọc được dữ liệu các tệp đã chọn.'}`;
+            reviewUploadStatusText.textContent = `❌ Audit error: ${lastErrorMsg || 'Unable to parse selected files.'}`;
             return;
         }
 
@@ -1573,9 +1617,9 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         activeFileIdx = 0;
 
         if (errorCount > 0) {
-            reviewUploadStatusText.textContent = `⚠️ Đã rà soát ${allReports.length}/${files.length} tệp (Lỗi ${errorCount} tệp: ${lastErrorMsg})`;
+            reviewUploadStatusText.textContent = `⚠️ Audited ${allReports.length}/${files.length} files (${errorCount} file errors: ${lastErrorMsg})`;
         } else {
-            reviewUploadStatusText.textContent = `✅ Đã hoàn tất rà soát ${allReports.length} tệp Timesheet!`;
+            reviewUploadStatusText.textContent = `✅ Completed audit of ${allReports.length} timesheet file(s)!`;
         }
 
         renderExecutiveKPIMetrics();
@@ -1959,13 +2003,71 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         return val ? String(val) : '';
     }
 
-    function showLoading(msg) {
-        loadingText.textContent = msg || 'Đang khởi tạo các file Excel Timesheet...';
+    let loadingTimeout = null;
+    let loadingInterval = null;
+    const loadingProgressBar = document.getElementById('loadingProgressBar');
+    const loadingPercent = document.getElementById('loadingPercent');
+    const loadingSubtext = document.getElementById('loadingSubtext');
+
+    function showLoading(titleMsg, subtextMsg = '') {
+        if (loadingTimeout) clearTimeout(loadingTimeout);
+        if (loadingInterval) clearInterval(loadingInterval);
+
+        const isEn = currentLang === 'en';
+        loadingText.textContent = titleMsg || (isEn ? 'Generating Excel Timesheets...' : 'Đang khởi tạo các file Excel Timesheet...');
+        if (loadingSubtext) {
+            loadingSubtext.textContent = subtextMsg || (isEn ? 'Parsing data and applying formulas...' : 'Đang xử lý dữ liệu và công thức...');
+        }
+        
+        updateLoadingProgress(0);
         loadingOverlay.classList.add('active');
+
+        // Auto-dismiss safety timer after 15 seconds to prevent stuck overlay
+        loadingTimeout = setTimeout(() => {
+            hideLoading();
+        }, 15000);
+    }
+
+    function updateLoadingProgress(percent, subtextMsg = '') {
+        const p = Math.min(100, Math.max(0, Math.round(percent)));
+        if (loadingProgressBar) loadingProgressBar.style.width = `${p}%`;
+        if (loadingPercent) loadingPercent.textContent = `${p}%`;
+        if (subtextMsg && loadingSubtext) loadingSubtext.textContent = subtextMsg;
+    }
+
+    function startSimulatedProgress(startP = 15, endP = 92, speedMs = 250) {
+        if (loadingInterval) clearInterval(loadingInterval);
+        let curr = startP;
+        updateLoadingProgress(curr);
+        loadingInterval = setInterval(() => {
+            if (curr < endP) {
+                const step = Math.max(1, Math.floor((endP - curr) / 6));
+                curr += step;
+                updateLoadingProgress(curr);
+            } else {
+                clearInterval(loadingInterval);
+            }
+        }, speedMs);
     }
 
     function hideLoading() {
-        loadingOverlay.classList.remove('active');
+        if (loadingTimeout) {
+            clearTimeout(loadingTimeout);
+            loadingTimeout = null;
+        }
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
+            loadingInterval = null;
+        }
+        updateLoadingProgress(100);
+        setTimeout(() => {
+            loadingOverlay.classList.remove('active');
+            updateLoadingProgress(0);
+        }, 350);
+    }
+
+    if (loadingOverlay) {
+        loadingOverlay.addEventListener('click', () => hideLoading());
     }
 
     init();
