@@ -27,6 +27,9 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'timesheets_extracted')
 OUTPUT_DIR = os.path.join(tempfile.gettempdir(), 'generated_timesheets')
 
+# Ensure writable directories exist on cold start (Vercel /tmp is writable)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 # In-memory store for custom members per domain
 CUSTOM_MEMBERS_STORE = {}
 
