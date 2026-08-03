@@ -21,9 +21,11 @@ from timesheet_generator import (
 from ai_assistant import audit_timesheet_data, process_ai_chat_command, apply_fixes_to_workbook
 import openpyxl
 
+import tempfile
+
 app = Flask(__name__, template_folder='templates', static_folder='static')
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'timesheets_extracted')
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), 'generated_timesheets')
+OUTPUT_DIR = os.path.join(tempfile.gettempdir(), 'generated_timesheets')
 
 # In-memory store for custom members per domain
 CUSTOM_MEMBERS_STORE = {}
