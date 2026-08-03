@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedDomainKeys: [],
         publicHolidays: [],
         autoSGHolidays: true,
-        currentMemberDomain: 'cbg',
+        currentMemberDomain: 'fpt',
         membersByDomain: {}
     };
 
@@ -37,7 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
             btnNextMonth: "Tháng sau →",
             lblSelectDomains: "Chọn Các Domain Cần Tạo:",
             btnSelectAllDomains: "Chọn tất cả",
-            btnUploadTemplate: "📤 Upload Template Domain Khác (.xlsx)",
+            btnUploadTemplate: "📤 Upload Template Domain (.xlsx)",
+            uploadHintText: "💡 Upload file Excel Template (.xlsx) của Domain bạn cần tạo timesheet để hệ thống tự động nhận diện Domain & Nhân viên.",
             
             // Step 2
             step2Title: "2. Danh Sách Nhân Viên & Ngày Lễ Singapore",
@@ -120,7 +121,8 @@ document.addEventListener('DOMContentLoaded', () => {
             btnNextMonth: "Next Month →",
             lblSelectDomains: "Select Domains To Generate:",
             btnSelectAllDomains: "Select All",
-            btnUploadTemplate: "📤 Upload Custom Domain Template (.xlsx)",
+            btnUploadTemplate: "📤 Upload Domain Template (.xlsx)",
+            uploadHintText: "💡 Upload your Domain Excel Template file (.xlsx) to automatically parse Domain & Member list.",
             
             // Step 2
             step2Title: "2. Members List & Singapore Public Holidays",

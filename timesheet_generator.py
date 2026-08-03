@@ -18,19 +18,11 @@ except ImportError:
 MONTH_NAMES_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 DOMAIN_FILE_MAP = {
-    'cbg': 'FPT_CBG CRM-OM Domain_Timesheet_May2026.xlsx',
-    'ebg': 'FPT_EBG_CRM-OM_Timesheet_May2026.xlsx',
-    'identity': 'FPT_Identity Domain_Timesheet_May2026.xlsx',
-    'provisioning': 'FPT_Provisioning Domain_Timesheet_May2026.xlsx',
-    'rwfm': 'FPT_RWFM Domain_Timesheet_May2026.xlsx',
+    'fpt': 'FPT_Domain_Timesheet_Template.xlsx',
 }
 
 DOMAIN_NAMES = {
-    'cbg': 'CBG CRM-OM Domain',
-    'ebg': 'EBG CRM-OM Domain',
-    'identity': 'Identity Domain',
-    'provisioning': 'Provisioning Domain',
-    'rwfm': 'RWFM Domain',
+    'fpt': 'FPT Domain',
 }
 
 # Standard thin border for table content cells
