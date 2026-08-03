@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monthly Timesheet Generator - Multi-Domain Excel Tool</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="glow-bg"></div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                        <path d="M8 14h.01"></path>
+                        <path d="M12 14h.01"></path>
+                        <path d="M16 14h.01"></path>
+                        <path d="M8 18h.01"></path>
+                        <path d="M12 18h.01"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1>Monthly Timesheet Generator</h1>
+                    <p class="subtitle" data-i18n="headerSubtitle">Khởi tạo file Excel Timesheet tự động theo từng Month & Domain (Thêm/Bớt Member & Ghi chú điều chỉnh tùy chọn)</p>
+                </div>
+            </div>
+            <div class="header-controls" style="display: flex; align-items: center; gap: 0.8rem;">
+                <button type="button" class="btn btn-sm btn-outline" id="btnToggleTheme" title="Chuyển chế độ Giao diện (Dark / Light)">
+                    <span id="themeIcon">🌙</span> <span id="themeLabel">Dark</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" id="btnToggleLang" title="Switch Language (VI / EN)">
+                    <span id="langFlag">🇻🇳</span> <span id="langLabel">VI</span>
+                </button>
+                <div class="header-badge">
+                    <span class="pulse-dot"></span>
+                    <span>FPT Automation v2.4</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Tab Navigation Bar -->
+        <nav class="app-tab-navigation">
+            <button type="button" class="tab-btn active" id="tabBtnGenerator" data-i18n="tabGenerator">
+                ✨ Tạo Timesheet
+            </button>
+            <button type="button" class="tab-btn" id="tabBtnIndividual" data-i18n="tabIndividual">
+                👤 Timesheet Cá Nhân
+            </button>
+            <button type="button" class="tab-btn" id="tabBtnReview" data-i18n="tabReview">
+                🔍 Review & Audit
+            </button>
+        </nav>
+
+        <!-- TAB 1: GENERATE NEW MONTH FORMAT -->
+        <main id="tabGeneratorView" class="tab-view-content active">
+            <div class="grid-layout">
+                <!-- Left Column: Setup & Members -->
+                <section class="controls-column">
+                    <!-- Step 1 Card: Month & Domain Selection -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="header-title-flex">
+                                <span class="card-icon">📅</span>
+                                <h2 data-i18n="step1Title">1. Chọn Tháng & Domain Timesheet</h2>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label data-i18n="lblMonth">Tháng & Năm Mục Tiêu</label>
+                                <div style="display: flex; gap: 0.6rem; align-items: center;">
+                                    <select id="selectMonthNum" class="form-control" style="flex: 1.3;">
+                                        <option value="01">Tháng 1 (Jan)</option>
+                                        <option value="02">Tháng 2 (Feb)</option>
+                                        <option value="03">Tháng 3 (Mar)</option>
+                                        <option value="04">Tháng 4 (Apr)</option>
+                                        <option value="05">Tháng 5 (May)</option>
+                                        <option value="06">Tháng 6 (Jun)</option>
+                                        <option value="07">Tháng 7 (Jul)</option>
+                                        <option value="08">Tháng 8 (Aug)</option>
+                                        <option value="09">Tháng 9 (Sep)</option>
+                                        <option value="10">Tháng 10 (Oct)</option>
+                                        <option value="11">Tháng 11 (Nov)</option>
+                                        <option value="12">Tháng 12 (Dec)</option>
+                                    </select>
+                                    <select id="selectYearNum" class="form-control" style="flex: 1;">
+                                        <option value="2025">2025</option>
+                                        <option value="2026" selected>2026</option>
+                                        <option value="2027">2027</option>
+                                        <option value="2028">2028</option>
+                                    </select>
+                                </div>
+                                <input type="hidden" id="monthSelect">
+                            </div>
+                            <div class="quick-months" style="margin-bottom: 1.2rem;">
+                                <button type="button" class="btn btn-sm btn-outline" id="btnPrevMonth" data-i18n="btnPrevMonth">← Tháng trước</button>
+                                <button type="button" class="btn btn-sm btn-outline" id="btnCurrentMonth" data-i18n="btnCurrentMonth">Tháng này</button>
+                                <button type="button" class="btn btn-sm btn-outline" id="btnNextMonth" data-i18n="btnNextMonth">Tháng sau →</button>
+                            </div>
+
+                            <hr class="card-divider">
+
+                            <div class="form-group" style="margin-bottom: 0.5rem;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                                    <label style="margin-bottom:0;" data-i18n="lblSelectDomains">Chọn Các Domain Cần Tạo:</label>
+                                    <button type="button" class="btn-text" id="btnSelectAllDomains" data-i18n="btnSelectAllDomains">Chọn tất cả</button>
+                                </div>
+                                <div class="domain-grid" id="domainList">
+                                    <div class="skeleton-loader">Loading domains...</div>
+                                </div>
+                            </div>
+
+                            <div class="upload-template-box">
+                                <input type="file" id="templateFileInput" accept=".xlsx" style="display: none;">
+                                <button type="button" class="btn btn-sm btn-secondary btn-upload" id="btnTriggerUpload" data-i18n="btnUploadTemplate">
+                                    📤 Upload Template Domain Khác (.xlsx)
+                                </button>
+                                <span class="upload-status" id="uploadStatusText"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2 Card: Member Management & Holidays -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="header-title-flex">
+                                <span class="card-icon">👥</span>
+                                <h2 data-i18n="step2Title">2. Danh Sách Nhân Viên & Ngày Lễ Singapore</h2>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline" id="btnAddNewMember" data-i18n="btnAddMember">+ Thêm Nhân Viên</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="domain-member-selector">
+                                <label for="memberDomainSelect" data-i18n="lblManageDomain">Quản lý nhân viên thuộc Domain:</label>
+                                <select id="memberDomainSelect" class="form-control" style="margin-bottom: 0.8rem;"></select>
+                            </div>
+                            <div class="members-table-wrapper" style="margin-bottom: 1.2rem;">
+                                <table class="members-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="thName">Họ tên</th>
+                                            <th data-i18n="thTeam">Team</th>
+                                            <th data-i18n="thLead">Lead</th>
+                                            <th data-i18n="thRole">Vị trí</th>
+                                            <th data-i18n="thLeave">Phép năm</th>
+                                            <th data-i18n="thBal">Dư phép</th>
+                                            <th data-i18n="thActions">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="membersTableBody">
+                                        <!-- Populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <hr class="card-divider">
+
+                            <label class="toggle-option" style="margin-bottom: 0.8rem;">
+                                <input type="checkbox" id="chkAutoSGHolidays" checked>
+                                <span class="toggle-label">
+                                    <strong data-i18n="lblAutoSG">🇸🇬 Tự động nạp Ngày lễ Singapore</strong>
+                                    <small data-i18n="lblAutoSGDesc">Nhận diện chuẩn ngày lễ Singapore & tự dời bù nếu rơi vào Chủ Nhật</small>
+                                </span>
+                            </label>
+
+                            <div class="ph-input-row">
+                                <input type="date" id="phDatePicker" class="form-control">
+                                <button type="button" class="btn btn-secondary" id="btnAddPH" data-i18n="btnAddHoliday">+ Thêm ngày lễ</button>
+                            </div>
+                            <div class="ph-tags-container" id="phTagsContainer">
+                                <span class="empty-ph-notice">Chưa chọn ngày lễ nào.</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Right Column: Overrides, Preview & Action -->
+                <section class="preview-column">
+                    <!-- Step 3 Card: Optional Overrides -->
+                    <div class="card glass-card overrides-card">
+                        <div class="card-header">
+                            <div class="header-title-flex">
+                                <span class="card-icon">📝</span>
+                                <h2 data-i18n="step3Title">3. Ghi Chú & Điều Chỉnh Tùy Chọn (Overrides)</h2>
+                            </div>
+                            <button type="button" class="btn-text" id="btnLoadExampleNotes" data-i18n="btnLoadNotes">Load Mẫu Comment Ghi Chú</button>
+                        </div>
+                        <div class="card-body">
+                            <p class="help-text" data-i18n="notesHelpText">Dán bảng ghi chú / comment điều chỉnh số dư phép hoặc đổi loại công việc của ngày cụ thể:</p>
+                            <div class="form-group">
+                                <textarea id="commentNotesText" class="form-control notes-textarea" rows="5" placeholder="Member name	Fsoft Account	Project name	Note
+Dao Manh Ha	HaDM	CBG CRM_OM_ AD	1-Jul OT 4h để support activities
+Duong Xuan Tung	TungDX9	CBG CRM_OM_ AD	10-Jul OT 8h Weekend support
+Duong Thi Tuyet Mai	MaiDTT23	Digital Domain	7-May có 2 line Project Task => Cần update Work Item Type 1 line 7-May về Weekday support (4h)"></textarea>
+                            </div>
+                            <div class="notes-hint" data-i18n="notesHint">
+                                💡 Hỗ trợ tự động nhân đôi dòng cho <code>Weekday support</code> (1 dòng Project Task 8h + 1 dòng Weekday support 4h chữ đỏ), <code>Weekend support</code>, <code>PH Support</code> và cập nhật dư phép <code>Leave Balance upto</code>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Month Statistics & Calendar Preview Card -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <span class="card-icon">📊</span>
+                            <h2><span data-i18n="lblStatsTitle">Thống Kê Tháng & Xem Trước Ngày</span> <span id="lblMonthTitle">--</span></h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="stats-grid" style="margin-bottom: 1.2rem;">
+                                <div class="stat-box primary">
+                                    <div class="stat-value" id="statWorkingDays">0</div>
+                                    <div class="stat-label" data-i18n="statWorkingDays">Ngày làm việc (Mon-Fri)</div>
+                                    <div class="stat-sub" data-i18n="statWorkingDaysSub">Tự động chọn cho từng Resource</div>
+                                </div>
+                                <div class="stat-box danger">
+                                    <div class="stat-value" id="statWeekendDays">0</div>
+                                    <div class="stat-label" data-i18n="statWeekendDays">Ngày nghỉ cuối tuần</div>
+                                    <div class="stat-sub" data-i18n="statWeekendDaysSub">Đã tự động loại bỏ (Sat/Sun)</div>
+                                </div>
+                                <div class="stat-box warning">
+                                    <div class="stat-value" id="statHolidays">0</div>
+                                    <div class="stat-label" data-i18n="statHolidays">Ngày lễ (Public Holiday)</div>
+                                    <div class="stat-sub" data-i18n="statHolidaysSub">Số ngày công 0 giờ</div>
+                                </div>
+                                <div class="stat-box info">
+                                    <div class="stat-value" id="statTotalDays">0</div>
+                                    <div class="stat-label" data-i18n="statTotalDays">Tổng số ngày trong tháng</div>
+                                    <div class="stat-sub" data-i18n="statTotalDaysSub">Tất cả các ngày calendar</div>
+                                </div>
+                            </div>
+
+                            <div class="days-grid-wrapper">
+                                <div class="days-grid" id="daysGrid">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action CTA Card -->
+                    <div class="card glass-card action-card">
+                        <button type="button" class="btn btn-primary btn-lg" id="btnGenerate" data-i18n="btnGenerate">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Tạo & Tải Xuống File Excel Timesheet
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- TAB 3: INDIVIDUAL MEMBER TIMESHEET GENERATOR -->
+        <main id="tabIndividualView" class="tab-view-content" style="display: none;">
+            <div class="grid-layout">
+                <!-- Left Column: Member & Domain Selection -->
+                <section class="controls-column">
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="header-title-flex">
+                                <span class="card-icon">👤</span>
+                                <h2 data-i18n="indivCardTitle">1. Chọn Nhân Viên & Tháng Mục Tiêu</h2>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label data-i18n="lblMonth">Tháng & Năm Mục Tiêu</label>
+                                <div style="display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.8rem;">
+                                    <select id="indivSelectMonthNum" class="form-control" style="flex: 1.3;">
+                                        <option value="01">Tháng 1 (Jan)</option>
+                                        <option value="02">Tháng 2 (Feb)</option>
+                                        <option value="03">Tháng 3 (Mar)</option>
+                                        <option value="04">Tháng 4 (Apr)</option>
+                                        <option value="05">Tháng 5 (May)</option>
+                                        <option value="06">Tháng 6 (Jun)</option>
+                                        <option value="07">Tháng 7 (Jul)</option>
+                                        <option value="08">Tháng 8 (Aug)</option>
+                                        <option value="09">Tháng 9 (Sep)</option>
+                                        <option value="10">Tháng 10 (Oct)</option>
+                                        <option value="11">Tháng 11 (Nov)</option>
+                                        <option value="12">Tháng 12 (Dec)</option>
+                                    </select>
+                                    <select id="indivSelectYearNum" class="form-control" style="flex: 1;">
+                                        <option value="2025">2025</option>
+                                        <option value="2026" selected>2026</option>
+                                        <option value="2027">2027</option>
+                                        <option value="2028">2028</option>
+                                    </select>
+                                </div>
+                                <input type="hidden" id="indivMonthSelect">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="indivDomainSelect" data-i18n="lblManageDomain">Chọn Domain của Nhân Viên:</label>
+                                <select id="indivDomainSelect" class="form-control" style="margin-bottom: 0.8rem;">
+                                    <option value="">-- Tất cả / Để trống Domains (All Domains) --</option>
+                                    <option value="__custom_domain__">➕ Nhập tên Domain mới (Custom Domain)...</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="customDomainInputGroup" style="display: none; margin-top: 0.6rem; margin-bottom: 0.8rem; background: rgba(16,206,103,0.06); padding: 0.9rem; border: 1px solid rgba(16,206,103,0.3); border-radius: var(--radius-sm);">
+                                <label style="color: var(--primary); font-weight: 700; margin-bottom: 0.5rem; display: block; font-size: 0.85rem;" data-i18n="lblCustomDomainTitle">➕ Nhập Tên Domain Mới Tùy Chỉnh:</label>
+                                <input type="text" id="inputCustomDomainName" class="form-control" placeholder="Nhập Tên Domain Mới (VD: Digital Banking, DXP Domain)">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="indivMemberSelect" data-i18n="lblSelectMember">Chọn Nhân Viên Cần Tạo Timesheet:</label>
+                                <select id="indivMemberSelect" class="form-control" style="margin-bottom: 0.8rem;">
+                                    <option value="">-- Tất cả / Để trống (Template mẫu) --</option>
+                                    <option value="__custom__">➕ Nhập tên nhân sự mới (Custom Member Name)...</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="customMemberInputGroup" style="display: none; margin-top: 0.6rem; background: rgba(16,206,103,0.06); padding: 0.9rem; border: 1px solid rgba(16,206,103,0.3); border-radius: var(--radius-sm);">
+                                <label style="color: var(--primary); font-weight: 700; margin-bottom: 0.5rem; display: block; font-size: 0.85rem;">➕ Nhập Thông Tin Nhân Viên Tùy Chỉnh:</label>
+                                <div style="display: flex; gap: 0.6rem; margin-bottom: 0.5rem;">
+                                    <input type="text" id="inputCustomMemberName" class="form-control" placeholder="Họ & Tên (VD: Nguyen Van A)">
+                                    <input type="text" id="inputCustomMemberAccount" class="form-control" placeholder="Fsoft Account (VD: AnNV)">
+                                </div>
+                                <div style="display: flex; gap: 0.6rem;">
+                                    <input type="text" id="inputCustomMemberTeam" class="form-control" placeholder="Team (VD: Offshore)">
+                                    <input type="number" id="inputCustomMemberLeave" class="form-control" placeholder="Dư phép (VD: 10)" value="10">
+                                </div>
+                            </div>
+
+                            <!-- Member Information Badge -->
+                            <div class="indiv-member-badge card" id="indivMemberBadge" style="background: rgba(16,206,103,0.08); border: 1px solid rgba(16,206,103,0.3); padding: 1.1rem; border-radius: var(--radius-sm); margin-top: 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                    <div>
+                                        <h3 id="badgeMemberName" style="color: #fff; margin-bottom: 0.2rem; font-size: 1.1rem;">--</h3>
+                                        <div style="font-size: 0.85rem; color: var(--text-muted);">
+                                            Account: <strong id="badgeMemberAccount" style="color: var(--primary);">--</strong> | Team: <span id="badgeMemberTeam">--</span>
+                                        </div>
+                                    </div>
+                                    <span class="ph-tag sg-holiday" id="badgeMemberRole">Resource</span>
+                                </div>
+                                <hr style="border-color: rgba(255,255,255,0.08); margin: 0.7rem 0;">
+                                <div style="display: flex; gap: 1.2rem; font-size: 0.84rem; flex-wrap: wrap;">
+                                    <div>Phép năm: <strong id="badgeMemberTotalLeave" style="color:#fff;">14</strong> ngày</div>
+                                    <div>Dư phép tích lũy: <strong id="badgeMemberLeaveBal" style="color:var(--primary);">10</strong> ngày</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Individual Notes & Schedule Builder -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="header-title-flex">
+                                <span class="card-icon">📝</span>
+                                <h2 data-i18n="indivNotesTitle">2. Ghi Chú Hoạt Động / OT / Phép Cho Nhân Viên</h2>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <p class="help-text" data-i18n="indivNotesHelp">Nhập các hoạt động OT, Weekday support, Weekend support hoặc Ngày nghỉ phép riêng của nhân sự này:</p>
+                            <div class="form-group">
+                                <textarea id="indivCommentNotes" class="form-control notes-textarea" rows="4" placeholder="Member name	Fsoft Account	Project name	Note
+Dao Manh Ha	HaDM	CBG CRM_OM_ AD	1-Jul OT 4h để support activities
+Dao Manh Ha	HaDM	CBG CRM_OM_ AD	10-Jul OT 8h Weekend support"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Right Column: Calendar & Action -->
+                <section class="preview-column">
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <span class="card-icon">📊</span>
+                            <h2><span data-i18n="indivPreviewTitle">Lịch Hoạt Động Tháng Của</span> <strong id="lblIndivMemberName" style="color: var(--primary);">--</strong></h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="days-grid-wrapper">
+                                <div class="days-grid" id="indivDaysGrid">
+                                    <!-- Dynamic calendar -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action CTA Card -->
+                    <div class="card glass-card action-card">
+                        <button type="button" class="btn btn-primary btn-lg" id="btnGenerateIndividual">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            <span data-i18n="btnGenIndiv">🚀 Tạo & Tải File Timesheet Cho Nhân Viên Này (.xlsx)</span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- TAB 2: REVIEW & AUDIT TIMESHEETS -->
+        <main id="tabReviewView" class="tab-view-content" style="display: none;">
+            <!-- File Upload Box (Supports Multiple Files) -->
+            <div class="card glass-card" style="margin-bottom: 1.5rem;">
+                <div class="card-header">
+                    <div class="header-title-flex">
+                        <span class="card-icon">📂</span>
+                        <h2 data-i18n="reviewUploadTitle">Review Nhiều File Timesheet Đã Điền (.xlsx)</h2>
+                    </div>
+                </div>
+                <div class="card-body text-center" style="padding: 2.2rem 1.5rem;">
+                    <div class="upload-template-box" style="border: 2px dashed var(--primary); padding: 1.8rem; text-align: center; background: rgba(16,206,103,0.04); border-radius: var(--radius-md);">
+                        <input type="file" id="reviewUploadFileInput" accept=".xlsx" multiple style="display: none;">
+                        <button type="button" class="btn btn-primary btn-lg" id="btnTriggerReviewUpload" data-i18n="btnReviewUpload">
+                            📂 Chọn Một Hoặc Nhiều File Timesheet To Review (.xlsx)
+                        </button>
+                        <p class="help-text" style="margin-top: 0.8rem; color: var(--text-muted);" data-i18n="reviewUploadHint">
+                            Kéo thả hoặc giữ Ctrl / Cmd để chọn đồng thời nhiều file Excel Timesheet (VD: Timesheet các domain CBG, DXP, Digital...).
+                        </p>
+                        <span class="upload-status" id="reviewUploadStatusText" style="font-size: 0.9rem; font-weight: 600;"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Executive KPI Metrics Summary Bar (Renders after Upload) -->
+            <div id="reviewMetricsBar" class="stats-grid" style="display: none; margin-bottom: 1.5rem;">
+                <div class="stat-box primary">
+                    <div class="stat-value" id="kpiTotalFiles">0</div>
+                    <div class="stat-label" data-i18n="kpiFiles">TỔNG SỐ TỆP REVIEWED</div>
+                    <div class="stat-sub" data-i18n="kpiFilesSub">File Excel đã được quét</div>
+                </div>
+                <div class="stat-box info">
+                    <div class="stat-value" id="kpiTotalMembers">0</div>
+                    <div class="stat-label" data-i18n="kpiHeadcount">TỔNG NHÂN SỰ ĐƯỢC RÀ SOÁT</div>
+                    <div class="stat-sub" data-i18n="kpiHeadcountSub">Số lượng Headcount</div>
+                </div>
+                <div class="stat-box danger">
+                    <div class="stat-value" id="kpiTotalErrors">0</div>
+                    <div class="stat-label" data-i18n="kpiErrors">SỐ LỖI & VI PHẠM PHÁT HIỆN</div>
+                    <div class="stat-sub" data-i18n="kpiErrorsSub">Worktype sai, âm phép, giờ nghỉ...</div>
+                </div>
+                <div class="stat-box warning">
+                    <div class="stat-value" id="kpiComplianceRate">100%</div>
+                    <div class="stat-label" data-i18n="kpiCompliance">TỶ LỆ TUÂN THỦ CLIENT RULE</div>
+                    <div class="stat-sub" data-i18n="kpiComplianceSub">Độ chuẩn xác dữ liệu</div>
+                </div>
+            </div>
+
+            <!-- File Switcher Tabs Bar -->
+            <div id="fileTabsNavigation" class="app-tab-navigation" style="display: none; margin-bottom: 1.2rem;">
+                <!-- Populated dynamically with file pills -->
+            </div>
+
+            <!-- Active File Workspace (Split 2-Column Layout) -->
+            <div id="activeFileWorkspace" style="display: none;">
+                <div class="grid-layout" style="grid-template-columns: 1.2fr 1fr; gap: 1.5rem;">
+                    <!-- Left Column: Error Detection & Before/After Cell Diffs -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="header-title-flex">
+                                <span class="card-icon">🔍</span>
+                                <h2 data-i18n="sectionDetectedErrors">⚠️ Danh Sách Lỗi Violations Phát Hiện & Đề Xuất Auto-Fix</h2>
+                            </div>
+                            <button type="button" class="btn-text" id="btnToggleSelectAllFixes" data-i18n="btnSelectAllFixes">Tích Tất Cả Fixes</button>
+                        </div>
+                        <div class="card-body">
+                            <div id="fileDiffsListContainer" class="audit-anomalies-list" style="max-height: 520px; overflow-y: auto;">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Live Sheet Table Inspector -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="header-title-flex">
+                                <span class="card-icon">📊</span>
+                                <h2 data-i18n="sectionExcelViewer">Trình Xem Dữ Liệu Trang Tính (Excel Viewer)</h2>
+                            </div>
+                            <div class="quick-months">
+                                <button type="button" class="btn btn-sm btn-outline sheet-tab-btn active" data-sheet="Timesheet" data-i18n="sheetTimesheet">Sheet Timesheet</button>
+                                <button type="button" class="btn btn-sm btn-outline sheet-tab-btn" data-sheet="Balance" data-i18n="sheetBalance">Sheet Balance</button>
+                                <button type="button" class="btn btn-sm btn-outline sheet-tab-btn" data-sheet="Summary" data-i18n="sheetSummary">Sheet Summary</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="members-table-wrapper" style="max-height: 480px;">
+                                <table class="members-table" id="liveExcelSheetTable">
+                                    <thead id="liveExcelSheetThead"></thead>
+                                    <tbody id="liveExcelSheetTbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Auto-Fix Action Bar Footer -->
+            <div class="card glass-card action-card" id="autoFixActionBar" style="display: none; margin-top: 1.5rem;">
+                <div class="card-body" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h3 style="color: #fff; font-size: 1.15rem; margin-bottom: 0.3rem;" data-i18n="fixBarTitle">⚡ Phê Duyệt & Tự Động Khắc Phục Lỗi</h3>
+                        <p class="help-text" style="margin: 0;" data-i18n="fixBarSub">Áp dụng các Fix Option đã tích chọn trực tiếp vào file Excel và xuất bản sạch chuẩn 100% Client Rule.</p>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-lg" id="btnApplyApprovedFixes" data-i18n="btnApplyFixes">
+                        🚀 Phê Duyệt Fix & Tải File Sạch (.xlsx / .zip)
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Adding / Editing Member -->
+    <div class="modal-overlay" id="memberModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modalTitle">Thêm Nhân Viên Mới</h3>
+                <button type="button" class="modal-close" id="btnModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editMemberIndex" value="-1">
+                <div class="form-group">
+                    <label>Họ và Tên Nhân Viên (*)</label>
+                    <input type="text" id="inputMemberName" class="form-control" placeholder="VD: Dao Manh Ha">
+                </div>
+                <div class="form-row">
+                    <div class="form-group col">
+                        <label>Fsoft Account (Tùy chọn)</label>
+                        <input type="text" id="inputFsoftAccount" class="form-control" placeholder="VD: HaDM">
+                    </div>
+                    <div class="form-group col">
+                        <label>Leader / Lead (*)</label>
+                        <input type="text" id="inputMemberLead" class="form-control" placeholder="VD: Xinjian, Cing Hai, Kevin">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col">
+                        <label>Team</label>
+                        <input type="text" id="inputMemberTeam" class="form-control" placeholder="VD: EAI, AMS">
+                    </div>
+                    <div class="form-group col">
+                        <label>Vị trí (Location)</label>
+                        <select id="inputMemberLocation" class="form-control">
+                            <option value="Offshore">Offshore</option>
+                            <option value="Onsite">Onsite</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col">
+                        <label>Tổng Phép Năm (Total Leave)</label>
+                        <input type="number" step="0.5" id="inputTotalLeave" class="form-control" value="14">
+                    </div>
+                    <div class="form-group col">
+                        <label>Dư Phép Tích Lũy (Balance Upto)</label>
+                        <input type="number" step="0.5" id="inputLeaveBalanceUpto" class="form-control" value="10">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="btnModalCancel">Hủy Bỏ</button>
+                <button type="button" class="btn btn-primary" id="btnModalSave">Lưu Thay Đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Chatbot Floating Widget & Panel -->
+    <div class="ai-widget-container">
+        <button type="button" class="ai-fab-btn" id="btnToggleAIChat" title="Mở AI Assistant">
+            <span class="ai-fab-icon">🤖</span>
+            <span class="ai-fab-text">AI Support</span>
+        </button>
+
+        <div class="ai-chat-panel" id="aiChatPanel">
+            <div class="ai-chat-header">
+                <div class="ai-header-brand">
+                    <span class="ai-avatar">🤖</span>
+                    <div>
+                        <h3>AI Timesheet Assistant</h3>
+                        <span class="ai-status-text">Ready • Natural Language NLP</span>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" id="btnCloseAIChat">&times;</button>
+            </div>
+
+            <div class="ai-chat-messages" id="aiChatMessages">
+                <div class="ai-msg bot">
+                    <div class="ai-msg-content">
+                        Xin chào! Tôi là **AI Support Assistant**. Tôi có thể giúp bạn:<br>
+                        • 🔍 **Rà soát lỗi Timesheet**: Tự động tìm số dư phép âm, sai loại OT.<br>
+                        • 📝 **Điều chỉnh tự động**: Nhập lệnh như *"Sửa phép cho Hà về 12"*, *"Thêm OT 4h cho Mai ngày 1/7"*.<br>
+                        • 💡 **Tự động áp dụng ghi chú** vào hệ thống!
+                    </div>
+                </div>
+            </div>
+
+            <div class="ai-quick-prompts">
+                <button type="button" class="quick-chip" onclick="window.sendQuickAIChat('Rà soát dữ liệu Timesheet')">🔍 Rà soát dữ liệu</button>
+                <button type="button" class="quick-chip" onclick="window.sendQuickAIChat('Sửa dư phép cho Dao Manh Ha về 12')">✏️ Sửa phép cho Hà về 12</button>
+                <button type="button" class="quick-chip" onclick="window.sendQuickAIChat('Thêm OT 4h cho Duong Thi Tuyet Mai ngày 1 Jul')">⚡ Thêm OT 4h ngày 1 Jul</button>
+            </div>
+
+            <div class="ai-chat-input-area">
+                <input type="text" id="aiChatInput" class="form-control" placeholder="Nhập yêu cầu (VD: Sửa phép cho Hà về 12)...">
+                <button type="button" class="btn btn-primary" id="btnSendAIChat">Gửi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Glassmorphic Confirm Dialog Modal -->
+    <div class="modal-overlay" id="confirmModal" style="z-index: 10005;">
+        <div class="modal-card" style="max-width: 440px; border-color: rgba(239, 68, 68, 0.4);">
+            <div class="modal-header">
+                <div class="header-title-flex">
+                    <span class="card-icon" style="color: var(--danger);">⚠️</span>
+                    <h3 id="confirmModalTitle">Xác Nhận Thao Tác</h3>
+                </div>
+                <button type="button" class="modal-close" id="btnConfirmClose">&times;</button>
+            </div>
+            <div class="modal-body" style="padding-top: 1rem;">
+                <p id="confirmModalMessage" style="color: #e2e8f0; font-size: 0.98rem; line-height: 1.5; margin: 0;">
+                    Bạn có chắc chắn muốn thực hiện thao tác này?
+                </p>
+            </div>
+            <div class="modal-footer" style="margin-top: 1.2rem; display: flex; gap: 0.8rem; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" id="btnConfirmCancel">Hủy Bỏ</button>
+                <button type="button" class="btn btn-danger" id="btnConfirmOk" style="background: linear-gradient(135deg, #ef4444, #dc2626); border: none; color: #fff;">Xác Nhận Xóa</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p id="loadingText">Đang khởi tạo các file Excel Timesheet...</p>
+    </div>
+
+    <!-- Custom Modern Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

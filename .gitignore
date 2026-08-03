@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Output and temporary files
+output/
+downloads/
+generated_timesheets/
+timesheets_extracted/
+*.zip
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Flask / Secret keys
+instance/
+.env
