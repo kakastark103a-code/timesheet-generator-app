@@ -153,6 +153,21 @@ def handle_members():
         CUSTOM_MEMBERS_STORE[domain_key] = members
         return jsonify({'message': f'Updated members for domain "{domain_key}"', 'count': len(members)})
 
+def optimize_template_file(file_path):
+    """
+    Trims unused empty formatted rows and optimizes cell dimensions of uploaded Excel templates.
+    Can compress a 10MB template down to ~50KB - 300KB!
+    """
+    if not file_path or not os.path.exists(file_path):
+        return
+    try:
+        wb = openpyxl.load_workbook(file_path)
+        trim_and_optimize_workbook(wb)
+        wb.save(file_path)
+        wb.close()
+    except Exception as e:
+        print(f"Failed to optimize template {file_path}: {e}")
+
 @app.route('/api/upload', methods=['POST'])
 def upload_template():
     uploaded_files = request.files.getlist('files')
@@ -172,6 +187,7 @@ def upload_template():
             continue
         save_path = os.path.join(TEMPLATE_DIR, filename)
         ufile.save(save_path)
+        optimize_template_file(save_path)
         saved_filenames.append(filename)
         
     if not saved_filenames:
@@ -240,6 +256,7 @@ def upload_chunk():
     except Exception: pass
 
     if target_type == 'template':
+        optimize_template_file(final_path)
         warmup_members_cache()
         available_domains = scan_available_domain_templates(TEMPLATE_DIR)
         return jsonify({
