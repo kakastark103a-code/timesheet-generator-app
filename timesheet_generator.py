@@ -2,6 +2,7 @@ import os
 import glob
 import calendar
 import re
+import zipfile
 from copy import copy
 from datetime import datetime, date
 import openpyxl
@@ -111,6 +112,8 @@ def scan_available_domain_templates(template_dir: str = 'timesheets_extracted'):
 
     files = glob.glob(os.path.join(template_dir, "*.xlsx"))
     for fpath in sorted(files):
+        if not zipfile.is_zipfile(fpath):
+            continue
         fname = os.path.basename(fpath)
         key = None
         for k, v in DOMAIN_FILE_MAP.items():
