@@ -60,10 +60,16 @@ def get_domains():
     available_domains = scan_available_domain_templates(TEMPLATE_DIR)
     domains_list = []
     
+    # Check if user has uploaded any custom domain templates
+    custom_keys = [k for k, info in available_domains.items() if info.get('filename') != 'FPT_CBG_CRM-OM_Domain_Timesheet_Template.xlsx']
+    
     predefined_keys = list(DOMAIN_FILE_MAP.keys())
     for key in predefined_keys:
         if key in available_domains:
             info = available_domains[key]
+            # Hide default fallback template if user has uploaded custom templates
+            if custom_keys and info.get('filename') == 'FPT_CBG_CRM-OM_Domain_Timesheet_Template.xlsx':
+                continue
             domains_list.append({
                 'key': key,
                 'name': info['name'],
@@ -741,8 +747,13 @@ def generate_timesheets():
     month_suffix = datetime(year, month, 1).strftime('%b%Y')
     available_domains = scan_available_domain_templates(TEMPLATE_DIR)
     
+    custom_keys = [k for k, info in available_domains.items() if info.get('filename') != 'FPT_CBG_CRM-OM_Domain_Timesheet_Template.xlsx']
+    
     if 'all' in selected_domains or not selected_domains:
-        target_keys = list(available_domains.keys())
+        if custom_keys:
+            target_keys = custom_keys
+        else:
+            target_keys = list(available_domains.keys())
     else:
         target_keys = selected_domains
 
