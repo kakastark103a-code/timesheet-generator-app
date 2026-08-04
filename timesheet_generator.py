@@ -372,10 +372,16 @@ def find_and_read_prev_month_leave_balances(domain_key: str, year: int, month: i
                     
             name_col = col_map.get('name', 2)
             upto_col = None
+            in_col = None
+            annual_col = None
+            lieu_col = None
+
             for h, c in col_map.items():
-                if 'leave balance upto' in h:
-                    upto_col = c
-                    break
+                if 'leave balance upto' in h: upto_col = c
+                elif 'leave balance in' in h: in_col = c
+                elif 'annual leave' in h: annual_col = c
+                elif 'days off in lieu' in h: lieu_col = c
+
             if not upto_col: upto_col = 7 if 'lead' in col_map else 6
             
             sum_leaves_map = {}
@@ -403,14 +409,29 @@ def find_and_read_prev_month_leave_balances(domain_key: str, year: int, month: i
                 row_vals = bal_rows[r]
                 name_val = row_vals[name_col - 1] if len(row_vals) >= name_col else None
                 if name_val and not str(name_val).startswith('='):
-                    res_name = str(name_val).strip()
-                    upto_val = row_vals[upto_col - 1] if len(row_vals) >= upto_col else 10.0
-                    upto_num = float(upto_val) if isinstance(upto_val, (int, float)) else 10.0
-                    leaves_cnt = sum_leaves_map.get(res_name.lower(), 0.0)
-                    prev_balances[res_name.lower()] = max(upto_num - leaves_cnt, 0.0)
+                    res_name = str(name_val).strip().lower()
+                    
+                    # 1. Try reading calculated ending Leave Balance In column first
+                    in_val = row_vals[in_col - 1] if (in_col and len(row_vals) >= in_col) else None
+                    if isinstance(in_val, (int, float)):
+                        prev_balances[res_name] = float(in_val)
+                    else:
+                        upto_val = row_vals[upto_col - 1] if (upto_col and len(row_vals) >= upto_col) else 10.0
+                        upto_num = float(upto_val) if isinstance(upto_val, (int, float)) else 10.0
+                        
+                        annual_val = row_vals[annual_col - 1] if (annual_col and len(row_vals) >= annual_col) else None
+                        if isinstance(annual_val, (int, float)):
+                            annual_num = float(annual_val)
+                        else:
+                            annual_num = sum_leaves_map.get(res_name, 0.0)
+
+                        lieu_val = row_vals[lieu_col - 1] if (lieu_col and len(row_vals) >= lieu_col) else 0.0
+                        lieu_num = float(lieu_val) if isinstance(lieu_val, (int, float)) else 0.0
+
+                        prev_balances[res_name] = max(upto_num - annual_num + lieu_num, 0.0)
         wb.close()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error reading prev month balances: {e}")
         
     return prev_balances
 
@@ -720,20 +741,39 @@ def update_balance_leave_sheet_dynamically(sheet_bal, resources, parsed_override
 
     name_col = col_map.get('name', 2)
     upto_col = None
+    in_col = None
+    annual_col = None
+    lieu_col = None
+
     for h, c in col_map.items():
-        if 'leave balance upto' in h:
-            upto_col = c
-            break
+        if 'leave balance upto' in h: upto_col = c
+        elif 'leave balance in' in h: in_col = c
+        elif 'annual leave' in h: annual_col = c
+        elif 'days off in lieu' in h: lieu_col = c
+
     if not upto_col: upto_col = 7 if 'lead' in col_map else 6
 
-    # Extract template default balances before deleting rows
+    # Extract template default net balances (calculating net ending balance for next month's upto)
     template_balances = {}
     for r in range(3, sheet_bal.max_row + 1):
         name_val = sheet_bal.cell(r, name_col).value
         if name_val and not str(name_val).startswith('='):
             res_name = str(name_val).strip().lower()
-            upto_val = sheet_bal.cell(r, upto_col).value
-            template_balances[res_name] = float(upto_val) if isinstance(upto_val, (int, float)) else 10.0
+            
+            in_val = sheet_bal.cell(r, in_col).value if in_col else None
+            if isinstance(in_val, (int, float)):
+                template_balances[res_name] = float(in_val)
+            else:
+                upto_val = sheet_bal.cell(r, upto_col).value if upto_col else 10.0
+                upto_num = float(upto_val) if isinstance(upto_val, (int, float)) else 10.0
+                
+                annual_val = sheet_bal.cell(r, annual_col).value if annual_col else 0.0
+                annual_num = float(annual_val) if isinstance(annual_val, (int, float)) else 0.0
+                
+                lieu_val = sheet_bal.cell(r, lieu_col).value if lieu_col else 0.0
+                lieu_num = float(lieu_val) if isinstance(lieu_val, (int, float)) else 0.0
+                
+                template_balances[res_name] = max(upto_num - annual_num + lieu_num, 0.0)
 
     # Read previous month's leave balances for domain (if exists)
     prev_month_balances = {}
