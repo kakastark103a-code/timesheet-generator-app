@@ -175,6 +175,19 @@ def resolve_formula_cell(wb, val):
                     return str(resolved_val).strip()
     return val_str
 
+def parse_val_to_float(val, default=None):
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    val_str = str(val).strip()
+    if not val_str or val_str.startswith('='):
+        return default
+    try:
+        return float(val_str)
+    except Exception:
+        return default
+
 def extract_leave_balances_from_balance_sheet(wb):
     """
     Scans 'Balance Leave' or 'Balance' sheet in wb and returns a dictionary:
@@ -242,30 +255,27 @@ def extract_leave_balances_from_balance_sheet(wb):
             
         tot_val = bal_sheet.cell(r, tot_col).value if tot_col else 14
         tot_res = resolve_formula_cell(wb, tot_val) if tot_val is not None else 14
-        try: tot_num = float(tot_res)
-        except Exception: tot_num = 14.0
+        tot_num = parse_val_to_float(tot_res, parse_val_to_float(tot_val, 14.0))
 
         # Read Leave Balance in <Month> (current month) as priority 1
         in_val = bal_sheet.cell(r, in_col).value if in_col else None
         in_res = resolve_formula_cell(wb, in_val) if in_val is not None else None
+        in_float = parse_val_to_float(in_res, parse_val_to_float(in_val, None))
 
-        if in_res is not None and isinstance(in_res, (int, float)):
-            net_bal = float(in_res)
+        if in_float is not None:
+            net_bal = in_float
         else:
-            upto_val = bal_sheet.cell(r, upto_col).value if upto_col else 10
-            upto_res = resolve_formula_cell(wb, upto_val) if upto_val is not None else 10
-            try: upto_num = float(upto_res)
-            except Exception: upto_num = 10.0
+            upto_val = bal_sheet.cell(r, upto_col).value if upto_col else None
+            upto_res = resolve_formula_cell(wb, upto_val) if upto_val is not None else None
+            upto_num = parse_val_to_float(upto_res, parse_val_to_float(upto_val, 10.0))
 
-            annual_val = bal_sheet.cell(r, annual_col).value if annual_col else 0
-            annual_res = resolve_formula_cell(wb, annual_val) if annual_val is not None else 0
-            try: annual_num = float(annual_res)
-            except Exception: annual_num = 0.0
+            annual_val = bal_sheet.cell(r, annual_col).value if annual_col else None
+            annual_res = resolve_formula_cell(wb, annual_val) if annual_val is not None else None
+            annual_num = parse_val_to_float(annual_res, parse_val_to_float(annual_val, 0.0))
 
-            lieu_val = bal_sheet.cell(r, lieu_col).value if lieu_col else 0
-            lieu_res = resolve_formula_cell(wb, lieu_val) if lieu_val is not None else 0
-            try: lieu_num = float(lieu_res)
-            except Exception: lieu_num = 0.0
+            lieu_val = bal_sheet.cell(r, lieu_col).value if lieu_col else None
+            lieu_res = resolve_formula_cell(wb, lieu_val) if lieu_val is not None else None
+            lieu_num = parse_val_to_float(lieu_res, parse_val_to_float(lieu_val, 0.0))
 
             net_bal = max(upto_num - annual_num + lieu_num, 0.0)
 
