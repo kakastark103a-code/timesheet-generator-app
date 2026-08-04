@@ -175,9 +175,88 @@ def resolve_formula_cell(wb, val):
                     return str(resolved_val).strip()
     return val_str
 
+def extract_leave_balances_from_balance_sheet(wb):
+    """
+    Scans 'Balance Leave' or 'Balance' sheet in wb and returns a dictionary:
+    resource_name_lower -> {'total_leave': float, 'leave_balance_upto': float}
+    """
+    balances = {}
+    bal_sheet = None
+    for name in wb.sheetnames:
+        if 'balance' in name.lower():
+            bal_sheet = wb[name]
+            break
+            
+    if not bal_sheet:
+        return balances
+
+    header_row = 1
+    col_map = {}
+    for r in range(1, min(6, bal_sheet.max_row + 1)):
+        row_map = {}
+        for c in range(1, bal_sheet.max_column + 1):
+            val = bal_sheet.cell(r, c).value
+            if val:
+                row_map[str(val).strip().lower()] = c
+        if any(k in row_map for k in ['name', 'resource', 'member', 'full name', 'họ tên', 'nhân viên', 'họ và tên']):
+            header_row = r
+            col_map = row_map
+            break
+
+    name_col = None
+    for k in ['name', 'resource', 'member', 'full name', 'họ tên', 'nhân viên', 'họ và tên']:
+        if k in col_map:
+            name_col = col_map[k]
+            break
+    if not name_col:
+        name_col = 2
+
+    tot_col = None
+    upto_col = None
+
+    for h, c in col_map.items():
+        if 'total leave' in h:
+            tot_col = c
+        elif 'leave balance upto' in h:
+            upto_col = c
+
+    if not tot_col: tot_col = 6 if 'lead' in col_map else 5
+    if not upto_col: upto_col = 7 if 'lead' in col_map else 6
+
+    for r in range(header_row + 1, bal_sheet.max_row + 1):
+        raw_name = bal_sheet.cell(r, name_col).value
+        if not raw_name:
+            continue
+        res_name = resolve_formula_cell(wb, raw_name)
+        if not res_name or str(res_name).startswith('='):
+            continue
+            
+        r_name_clean = str(res_name).strip().lower()
+        if r_name_clean in ['total', 'tổng', 'stt', 'no', 'none', 'name', 'resource', '0']:
+            continue
+            
+        tot_val = bal_sheet.cell(r, tot_col).value if tot_col else 14
+        upto_val = bal_sheet.cell(r, upto_col).value if upto_col else 10
+        
+        tot_res = resolve_formula_cell(wb, tot_val) if tot_val is not None else 14
+        upto_res = resolve_formula_cell(wb, upto_val) if upto_val is not None else 10
+
+        try: tot_num = float(tot_res)
+        except Exception: tot_num = 14.0
+
+        try: upto_num = float(upto_res)
+        except Exception: upto_num = 10.0
+
+        balances[r_name_clean] = {
+            'total_leave': tot_num,
+            'leave_balance_upto': upto_num
+        }
+
+    return balances
+
 def extract_resources_from_summary(wb):
     """
-    Extracts resource list with metadata (Name, Team, Lead, Location) from Summary sheet.
+    Extracts resource list with metadata (Name, Team, Lead, Location, Total Leave, Leave Balance Upto) from Summary & Balance Leave sheets.
     Supports flexible header row scanning, formula resolution, and Vietnamese/English col headers.
     """
     summary_sheet = None
@@ -190,6 +269,7 @@ def extract_resources_from_summary(wb):
 
     sheet = summary_sheet
     resources = []
+    bal_data = extract_leave_balances_from_balance_sheet(wb)
     
     header_row = 1
     col_map = {}
@@ -255,6 +335,11 @@ def extract_resources_from_summary(wb):
         lead_val = sheet.cell(r, lead_col).value if lead_col else ""
         loc_val = sheet.cell(r, loc_col).value if loc_col else "Offshore"
         
+        r_name_lower = name_clean.lower()
+        member_bal = bal_data.get(r_name_lower, {})
+        tot_leave_val = member_bal.get('total_leave', 14)
+        leave_upto_val = member_bal.get('leave_balance_upto', 10)
+
         resources.append({
             'row': r,
             'name': name_clean,
@@ -262,8 +347,8 @@ def extract_resources_from_summary(wb):
             'lead': str(resolve_formula_cell(wb, lead_val) or "").strip(),
             'location': str(resolve_formula_cell(wb, loc_val) or "Offshore").strip(),
             'vendor': 'FPT',
-            'total_leave': 14,
-            'leave_balance_upto': 10
+            'total_leave': tot_leave_val,
+            'leave_balance_upto': leave_upto_val
         })
     return resources
 
@@ -837,11 +922,13 @@ def update_balance_leave_sheet_dynamically(sheet_bal, resources, parsed_override
         res_name = res['name']
         member_override = parsed_overrides.get(res_name.lower(), {})
         
-        # Determine Leave Balance Upto: Priority 1: Comment Note override -> Priority 2: Previous Month File -> Priority 3: Template default -> Priority 4: 10
+        # Determine Leave Balance Upto: Priority 1: Comment Note override -> Priority 2: Previous Month File -> Priority 3: Member custom res -> Priority 4: Template default -> Priority 5: 10
         if 'leave_balance_upto' in member_override:
             leave_upto = member_override['leave_balance_upto']
         elif res_name.lower() in prev_month_balances:
             leave_upto = prev_month_balances[res_name.lower()]
+        elif 'leave_balance_upto' in res and res['leave_balance_upto'] is not None:
+            leave_upto = res['leave_balance_upto']
         elif res_name.lower() in template_balances:
             leave_upto = template_balances[res_name.lower()]
         else:
