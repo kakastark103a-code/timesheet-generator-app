@@ -501,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderDomainList() {
         if (!state.domains.length) {
-            domainList.innerHTML = `<div class="empty-msg">Không có domain nào</div>`;
+            domainList.innerHTML = `<div class="empty-msg">No domain templates available</div>`;
             return;
         }
 
@@ -510,13 +510,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const disabledAttr = domain.available ? '' : 'disabled';
             const badge = domain.is_custom ? ' <span class="ph-tag" style="font-size: 0.7rem; padding: 0.1rem 0.4rem;">Custom</span>' : '';
             return `
-                <label class="domain-item ${isChecked ? 'active' : ''}">
-                    <input type="checkbox" value="${domain.key}" ${isChecked ? 'checked' : ''} ${disabledAttr}>
-                    <div class="domain-info">
-                        <div class="domain-name">${domain.name}${badge}</div>
-                        <div class="domain-file">${domain.template}</div>
-                    </div>
-                </label>
+                <div class="domain-item ${isChecked ? 'active' : ''}">
+                    <label class="domain-item-label">
+                        <input type="checkbox" value="${domain.key}" ${isChecked ? 'checked' : ''} ${disabledAttr}>
+                        <div class="domain-info">
+                            <div class="domain-name">${domain.name}${badge}</div>
+                            <div class="domain-file">${domain.template}</div>
+                        </div>
+                    </label>
+                    <button type="button" class="btn-delete-domain" data-key="${domain.key}" data-template="${domain.template}" title="Delete template file">
+                        🗑️
+                    </button>
+                </div>
             `;
         }).join('');
 
@@ -528,9 +533,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     state.selectedDomainKeys = state.selectedDomainKeys.filter(k => k !== key);
                 }
-                btnSelectAllDomains.textContent = state.selectedDomainKeys.length === state.domains.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả';
+                btnSelectAllDomains.textContent = state.selectedDomainKeys.length === state.domains.length ? 'Deselect All' : 'Select All';
             });
         });
+
+        domainList.querySelectorAll('.btn-delete-domain').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const key = e.currentTarget.getAttribute('data-key');
+                const tname = e.currentTarget.getAttribute('data-template');
+                deleteDomainTemplate(key, tname);
+            });
+        });
+    }
+
+    async function deleteDomainTemplate(domainKey, templateName) {
+        const isEn = currentLang === 'en';
+        const confirmMsg = isEn 
+            ? `Are you sure you want to delete template "${templateName}"?` 
+            : `Bạn có chắc chắn muốn xóa file template "${templateName}" không?`;
+        
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            const res = await fetch('/api/delete-domain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain: domainKey })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to delete domain template');
+
+            delete state.membersByDomain[domainKey];
+            state.selectedDomainKeys = state.selectedDomainKeys.filter(k => k !== domainKey);
+
+            showNotification(`🗑️ ${isEn ? 'Deleted template file successfully!' : 'Đã xóa file template thành công!'}`, 'success');
+            await loadDomains();
+        } catch (err) {
+            console.error('Error deleting domain template:', err);
+            showNotification(`❌ ${err.message}`, 'error');
+        }
     }
 
     function renderMemberDomainDropdown() {

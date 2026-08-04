@@ -90,6 +90,40 @@ def get_domains():
             
     return jsonify({'domains': domains_list})
 
+@app.route('/api/delete-domain', methods=['POST', 'DELETE'])
+def delete_domain():
+    data = request.json or {}
+    domain_key = data.get('domain') or request.args.get('domain')
+    if not domain_key:
+        return jsonify({'error': 'Missing domain key'}), 400
+
+    available_domains = scan_available_domain_templates(TEMPLATE_DIR)
+    domain_info = available_domains.get(domain_key)
+    
+    if not domain_info:
+        tpath = find_template_path(domain_key, TEMPLATE_DIR, allow_fallback=False)
+        if tpath and os.path.exists(tpath):
+            domain_info = {'filepath': tpath, 'filename': os.path.basename(tpath)}
+
+    if not domain_info or not os.path.exists(domain_info['filepath']):
+        return jsonify({'error': f'Domain template "{domain_key}" not found.'}), 404
+
+    try:
+        filepath = domain_info['filepath']
+        filename = domain_info['filename']
+        os.remove(filepath)
+        
+        MEMBERS_PARSED_CACHE.clear()
+        if domain_key in CUSTOM_MEMBERS_STORE:
+            del CUSTOM_MEMBERS_STORE[domain_key]
+
+        return jsonify({
+            'message': f'Deleted template "{filename}" successfully!',
+            'deleted_key': domain_key
+        })
+    except Exception as e:
+        return jsonify({'error': f'Failed to delete template: {str(e)}'}), 500
+
 MEMBERS_PARSED_CACHE = {}
 
 def get_members_for_domain_file(template_path):

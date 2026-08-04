@@ -809,18 +809,47 @@ body {
 .domain-item {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 0.75rem;
     padding: 0.8rem 1rem;
     border-radius: var(--radius-md);
     background: rgba(15, 23, 42, 0.4);
     border: 1px solid var(--card-border);
-    cursor: pointer;
     transition: var(--transition);
 }
 
 .domain-item:hover {
     background: rgba(30, 41, 59, 0.6);
     border-color: var(--card-hover-border);
+}
+
+.domain-item-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    cursor: pointer;
+}
+
+.btn-delete-domain {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    border-radius: 6px;
+    padding: 0.3rem 0.55rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-delete-domain:hover {
+    background: #ef4444;
+    color: #ffffff;
+    border-color: #ef4444;
+    transform: scale(1.1);
 }
 
 .domain-item input[type="checkbox"] {
