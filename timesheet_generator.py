@@ -188,65 +188,68 @@ def parse_val_to_float(val, default=None):
     except Exception:
         return default
 
-def resolve_cell_value_numeric(wb, val, default=0.0):
+def resolve_cell_value_numeric(wb_data, wb_raw, cell_data, cell_raw=None, default=0.0):
     """
-    Resolves a cell value or formula string reference (e.g. '=Summary!L3') to a float.
+    Resolves cell numeric value by combining data_only evaluated numbers and raw formula cross-references (e.g. '=Summary!L2').
     """
-    if val is None:
-        return default
-    if isinstance(val, (int, float)):
-        return float(val)
-    val_str = str(val).strip()
-    if not val_str:
-        return default
-    if not val_str.startswith('='):
-        try:
-            return float(val_str)
-        except Exception:
-            return default
+    # 1. Try direct float from data_only workbook
+    f_data = parse_val_to_float(cell_data, None)
+    if f_data is not None:
+        return f_data
 
-    # If val is a formula like '=Summary!L3'
-    m = re.match(r'^=([A-Za-z0-9_ -]+)!([A-Z]+)(\d+)$', val_str, re.IGNORECASE)
-    if m:
-        target_sheet_name, col_str, row_str = m.group(1), m.group(2), int(m.group(3))
-        col_num = 0
-        for char in col_str.upper():
-            col_num = col_num * 26 + (ord(char) - ord('A') + 1)
-        for sname in wb.sheetnames:
-            if sname.strip().lower() == target_sheet_name.strip().lower():
-                target_cell_v = wb[sname].cell(row_str, col_num).value
-                return resolve_cell_value_numeric(wb, target_cell_v, default)
+    # 2. Try direct float from raw workbook if not a formula
+    f_raw = parse_val_to_float(cell_raw, None)
+    if f_raw is not None:
+        return f_raw
+
+    # 3. If cell_raw is a formula reference like '=Summary!L2', resolve it!
+    val_str = str(cell_raw or '').strip()
+    if val_str.startswith('='):
+        m = re.match(r'^=([A-Za-z0-9_ -]+)!([A-Z]+)(\d+)$', val_str, re.IGNORECASE)
+        if m:
+            target_sheet_name, col_str, row_str = m.group(1), m.group(2), int(m.group(3))
+            col_num = 0
+            for char in col_str.upper():
+                col_num = col_num * 26 + (ord(char) - ord('A') + 1)
+            for sname in wb_data.sheetnames:
+                if sname.strip().lower() == target_sheet_name.strip().lower():
+                    target_cell_data = wb_data[sname].cell(row_str, col_num).value
+                    target_cell_raw = wb_raw[sname].cell(row_str, col_num).value if wb_raw else None
+                    return resolve_cell_value_numeric(wb_data, wb_raw, target_cell_data, target_cell_raw, default)
 
     return default
 
-def extract_leave_balances_from_balance_sheet(wb):
+def extract_leave_balances_from_balance_sheet(wb_data, wb_raw=None):
     """
     Scans 'Balance Leave' or 'Balance' sheet in wb and returns a dictionary:
     resource_name_lower -> {'total_leave': float, 'leave_balance_upto': float}
     Reads 'Leave Balance in <Month>' (Column J) directly or evaluates formula =G{r}-MAX(I{r}-H{r},0).
     """
     balances = {}
-    bal_sheet = None
-    for name in wb.sheetnames:
+    bal_sheet_data = None
+    bal_sheet_raw = None
+
+    for name in wb_data.sheetnames:
         if 'balance' in name.lower():
-            bal_sheet = wb[name]
+            bal_sheet_data = wb_data[name]
+            if wb_raw and name in wb_raw.sheetnames:
+                bal_sheet_raw = wb_raw[name]
             break
             
-    if not bal_sheet:
+    if not bal_sheet_data:
         return balances
 
     header_row = 1
     col_map = {}
-    for r in range(1, min(6, bal_sheet.max_row + 1)):
-        row_map = {}
-        for c in range(1, bal_sheet.max_column + 1):
-            val = bal_sheet.cell(r, c).value
+    for r in range(1, min(6, bal_sheet_data.max_row + 1)):
+        for c in range(1, bal_sheet_data.max_column + 1):
+            val = bal_sheet_data.cell(r, c).value or (bal_sheet_raw.cell(r, c).value if bal_sheet_raw else None)
             if val:
-                row_map[str(val).strip().lower()] = c
-        if any(k in row_map for k in ['name', 'resource', 'member', 'full name', 'họ tên', 'nhân viên', 'họ và tên']):
-            header_row = r
-            col_map = row_map
-            break
+                val_str = str(val).strip().lower()
+                if val_str not in col_map:
+                    col_map[val_str] = c
+                if any(k in val_str for k in ['name', 'resource', 'member', 'full name', 'họ tên', 'nhân viên', 'họ và tên']):
+                    header_row = max(header_row, r)
 
     name_col = None
     for k in ['name', 'resource', 'member', 'full name', 'họ tên', 'nhân viên', 'họ và tên']:
@@ -272,11 +275,13 @@ def extract_leave_balances_from_balance_sheet(wb):
     if not tot_col: tot_col = 6 if 'lead' in col_map else 5
     if not upto_col: upto_col = 7 if 'lead' in col_map else 6
 
-    for r in range(header_row + 1, bal_sheet.max_row + 1):
-        raw_name = bal_sheet.cell(r, name_col).value
+    for r in range(header_row + 1, bal_sheet_data.max_row + 1):
+        raw_name = bal_sheet_data.cell(r, name_col).value
+        if not raw_name and bal_sheet_raw:
+            raw_name = bal_sheet_raw.cell(r, name_col).value
         if not raw_name:
             continue
-        res_name = resolve_formula_cell(wb, raw_name)
+        res_name = resolve_formula_cell(wb_data, raw_name)
         if not res_name or str(res_name).startswith('='):
             continue
             
@@ -284,25 +289,30 @@ def extract_leave_balances_from_balance_sheet(wb):
         if r_name_clean in ['total', 'tổng', 'stt', 'no', 'none', 'name', 'resource', '0']:
             continue
             
-        tot_val = bal_sheet.cell(r, tot_col).value if tot_col else 14
-        tot_num = resolve_cell_value_numeric(wb, tot_val, 14.0)
+        tot_cell_data = bal_sheet_data.cell(r, tot_col).value if tot_col else None
+        tot_cell_raw = bal_sheet_raw.cell(r, tot_col).value if tot_col and bal_sheet_raw else None
+        tot_num = resolve_cell_value_numeric(wb_data, wb_raw, tot_cell_data, tot_cell_raw, 14.0)
 
         # 1. Read direct numeric value in Column J (Leave Balance in Month)
-        in_val = bal_sheet.cell(r, in_col).value if in_col else None
-        in_float = parse_val_to_float(in_val, None)
+        in_cell_data = bal_sheet_data.cell(r, in_col).value if in_col else None
+        in_cell_raw = bal_sheet_raw.cell(r, in_col).value if in_col and bal_sheet_raw else None
+        in_num = resolve_cell_value_numeric(wb_data, wb_raw, in_cell_data, in_cell_raw, None)
 
-        if in_float is not None:
-            net_bal = in_float
+        if in_num is not None:
+            net_bal = in_num
         else:
-            # 2. Evaluate Excel formula =G{r}-MAX(I{r}-H{r},0) by resolving cell references from Balance Leave & Summary sheets
-            upto_val = bal_sheet.cell(r, upto_col).value if upto_col else None
-            upto_num = resolve_cell_value_numeric(wb, upto_val, 10.0)
+            # 2. Evaluate Excel formula =G{r}-MAX(I{r}-H{r},0) by resolving cell references across Balance Leave & Summary sheets
+            upto_cell_data = bal_sheet_data.cell(r, upto_col).value if upto_col else None
+            upto_cell_raw = bal_sheet_raw.cell(r, upto_col).value if upto_col and bal_sheet_raw else None
+            upto_num = resolve_cell_value_numeric(wb_data, wb_raw, upto_cell_data, upto_cell_raw, 10.0)
 
-            annual_val = bal_sheet.cell(r, annual_col).value if annual_col else None
-            annual_num = resolve_cell_value_numeric(wb, annual_val, 0.0)
+            annual_cell_data = bal_sheet_data.cell(r, annual_col).value if annual_col else None
+            annual_cell_raw = bal_sheet_raw.cell(r, annual_col).value if annual_col and bal_sheet_raw else None
+            annual_num = resolve_cell_value_numeric(wb_data, wb_raw, annual_cell_data, annual_cell_raw, 0.0)
 
-            lieu_val = bal_sheet.cell(r, lieu_col).value if lieu_col else None
-            lieu_num = resolve_cell_value_numeric(wb, lieu_val, 0.0)
+            lieu_cell_data = bal_sheet_data.cell(r, lieu_col).value if lieu_col else None
+            lieu_cell_raw = bal_sheet_raw.cell(r, lieu_col).value if lieu_col and bal_sheet_raw else None
+            lieu_num = resolve_cell_value_numeric(wb_data, wb_raw, lieu_cell_data, lieu_cell_raw, 0.0)
 
             net_bal = max(upto_num - max(annual_num - lieu_num, 0.0), 0.0)
 
@@ -313,22 +323,22 @@ def extract_leave_balances_from_balance_sheet(wb):
 
     return balances
 
-def extract_resources_from_summary(wb):
+def extract_resources_from_summary(wb_data, wb_raw=None):
     """
     Extracts resource list with metadata (Name, Team, Lead, Location, Total Leave, Leave Balance Upto) from Summary & Balance Leave sheets.
     Supports flexible header row scanning, formula resolution, and Vietnamese/English col headers.
     """
     summary_sheet = None
-    for name in wb.sheetnames:
+    for name in wb_data.sheetnames:
         if any(k in name.lower() for k in ['summary', 'danh sách', 'resource', 'nhân viên', 'member']):
-            summary_sheet = wb[name]
+            summary_sheet = wb_data[name]
             break
     if not summary_sheet:
         return []
 
     sheet = summary_sheet
     resources = []
-    bal_data = extract_leave_balances_from_balance_sheet(wb)
+    bal_data = extract_leave_balances_from_balance_sheet(wb_data, wb_raw)
     
     header_row = 1
     col_map = {}
@@ -382,7 +392,7 @@ def extract_resources_from_summary(wb):
         if not raw_name:
             continue
             
-        resolved_name = resolve_formula_cell(wb, raw_name)
+        resolved_name = resolve_formula_cell(wb_data, raw_name)
         if not resolved_name or resolved_name.startswith('='):
             continue
             
@@ -402,9 +412,9 @@ def extract_resources_from_summary(wb):
         resources.append({
             'row': r,
             'name': name_clean,
-            'team': str(resolve_formula_cell(wb, team_val) or "").strip(),
-            'lead': str(resolve_formula_cell(wb, lead_val) or "").strip(),
-            'location': str(resolve_formula_cell(wb, loc_val) or "Offshore").strip(),
+            'team': str(resolve_formula_cell(wb_data, team_val) or "").strip(),
+            'lead': str(resolve_formula_cell(wb_data, lead_val) or "").strip(),
+            'location': str(resolve_formula_cell(wb_data, loc_val) or "Offshore").strip(),
             'vendor': 'FPT',
             'total_leave': tot_leave_val,
             'leave_balance_upto': leave_upto_val

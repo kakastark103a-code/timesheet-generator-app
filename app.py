@@ -126,21 +126,14 @@ def get_members_for_domain_file(template_path):
     import time
     for attempt in range(3):
         try:
-            # First try data_only=True (for evaluated values)
-            wb = openpyxl.load_workbook(template_path, data_only=True)
-            members = extract_resources_from_summary(wb)
+            wb_data = openpyxl.load_workbook(template_path, data_only=True)
+            wb_raw = openpyxl.load_workbook(template_path, data_only=False)
+            members = extract_resources_from_summary(wb_data, wb_raw)
             if not members:
-                sheet_ts = wb['Timesheet'] if 'Timesheet' in wb.sheetnames else None
+                sheet_ts = wb_data['Timesheet'] if 'Timesheet' in wb_data.sheetnames else None
                 members = extract_resources_from_timesheet(sheet_ts) if sheet_ts else []
-            wb.close()
-
-            # Fallback to data_only=False (for resolving formula references like =Timesheet!G2)
-            if not members:
-                wb_raw = openpyxl.load_workbook(template_path, data_only=False)
-                members = extract_resources_from_summary(wb_raw)
-                if not members:
-                    members = extract_resources_from_any_sheet(wb_raw)
-                wb_raw.close()
+            wb_data.close()
+            wb_raw.close()
 
             if members and len(members) > 0:
                 MEMBERS_PARSED_CACHE[cache_key] = members
