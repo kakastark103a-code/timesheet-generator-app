@@ -716,7 +716,7 @@ def apply_fixes_and_download():
     if not fixed_files_paths:
         return jsonify({'error': 'Failed to process any fixed files'}), 500
 
-    # Clean up original uploads asynchronously
+    # Clean temporary source files
     for item in approved_files:
         file_token = item.get('file_token')
         src_path = os.path.join(OUTPUT_DIR, f"_uploaded_{file_token}")
@@ -724,30 +724,36 @@ def apply_fixes_and_download():
             try: os.remove(src_path)
             except Exception: pass
 
-    # Single File Return
-    if len(fixed_files_paths) == 1:
-        out_filename, out_path = fixed_files_paths[0]
-        return send_file(
-            out_path,
-            as_attachment=True,
-            download_name=out_filename,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+    files_list = []
+    for out_filename, out_path in fixed_files_paths:
+        files_list.append({
+            'filename': out_filename,
+            'download_url': f"/api/download-generated-file?filename={out_filename}"
+        })
 
-    # Multiple Files Return as ZIP
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for out_filename, out_path in fixed_files_paths:
-            zf.write(out_path, arcname=out_filename)
-            try: os.remove(out_path)
-            except Exception: pass
+    return jsonify({
+        'status': 'success',
+        'count': len(files_list),
+        'files': files_list
+    })
 
-    memory_file.seek(0)
+@app.route('/api/download-generated-file', methods=['GET'])
+def download_generated_file():
+    filename = request.args.get('filename')
+    if not filename:
+        return jsonify({'error': 'Missing filename'}), 400
+
+    filename = secure_filename(filename)
+    filepath = os.path.join(OUTPUT_DIR, filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'File not found'}), 404
+
     return send_file(
-        memory_file,
+        filepath,
         as_attachment=True,
-        download_name=f"Fixed_Timesheets_Batch_{datetime.now().strftime('%Y%m%d')}.zip",
-        mimetype='application/zip'
+        download_name=filename,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 
 @app.route('/api/generate', methods=['POST'])
@@ -809,28 +815,18 @@ def generate_timesheets():
     if not generated_files:
         return jsonify({'error': 'No valid template found to generate timesheet.'}), 404
 
-    if len(generated_files) == 1:
-        fname, fpath = generated_files[0]
-        return send_file(
-            fpath,
-            as_attachment=True,
-            download_name=fname,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+    files_list = []
+    for fname, fpath in generated_files:
+        files_list.append({
+            'filename': fname,
+            'download_url': f"/api/download-generated-file?filename={fname}"
+        })
 
-    zip_filename = f"FPT_Timesheets_{month_suffix}.zip"
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for fname, fpath in generated_files:
-            zf.write(fpath, arcname=fname)
-    memory_file.seek(0)
-
-    return send_file(
-        memory_file,
-        as_attachment=True,
-        download_name=zip_filename,
-        mimetype='application/zip'
-    )
+    return jsonify({
+        'status': 'success',
+        'count': len(files_list),
+        'files': files_list
+    })
 
 @app.route('/api/generate-individual', methods=['POST'])
 def generate_individual_timesheet():

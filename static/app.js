@@ -1025,31 +1025,22 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
                 })
             });
 
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error || 'Có lỗi xảy ra khi tạo tệp Timesheet');
-            }
-
-            const contentDisposition = response.headers.get('Content-Disposition');
-            let filename = `FPT_Timesheets_${state.selectedMonth}.xlsx`;
-            if (contentDisposition) {
-                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-                if (filenameMatch && filenameMatch[1]) {
-                    filename = filenameMatch[1];
+            const data = await response.json();
+            if (data.files && data.files.length > 0) {
+                for (let i = 0; i < data.files.length; i++) {
+                    const fInfo = data.files[i];
+                    const a = document.createElement('a');
+                    a.href = fInfo.download_url;
+                    a.download = fInfo.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    if (i < data.files.length - 1) {
+                        await new Promise(r => setTimeout(r, 250));
+                    }
                 }
+                showNotification(isEn ? '✅ Successfully generated & downloaded Timesheets!' : '✅ Đã khởi tạo và tải về tệp Timesheet thành công!', 'success');
             }
-
-            const blob = await response.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(downloadUrl);
-
-            showNotification(isEn ? '✅ Successfully generated & downloaded Timesheets!' : '✅ Đã khởi tạo và tải về tệp Timesheet thành công!', 'success');
         } catch (err) {
             console.error('Generation error:', err);
             showNotification(isEn ? `Error: ${err.message}` : `Lỗi: ${err.message}`, 'danger');
@@ -2060,29 +2051,22 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
                 body: JSON.stringify({ approved_files })
             });
 
-            if (!res.ok) {
-                const contentType = res.headers.get('content-type') || '';
-                let errMsg = 'Lỗi áp dụng fix';
-                if (contentType.includes('application/json')) {
-                    const errData = await res.json().catch(() => ({}));
-                    errMsg = errData.error || errMsg;
-                } else {
-                    errMsg = `Server báo lỗi (HTTP ${res.status})`;
+            const resData = await res.json();
+            if (resData.files && resData.files.length > 0) {
+                for (let i = 0; i < resData.files.length; i++) {
+                    const fInfo = resData.files[i];
+                    const a = document.createElement('a');
+                    a.href = fInfo.download_url;
+                    a.download = fInfo.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    if (i < resData.files.length - 1) {
+                        await new Promise(r => setTimeout(r, 250));
+                    }
                 }
-                throw new Error(errMsg);
+                reviewUploadStatusText.textContent = `✅ Đã sửa lỗi & tải xuống file sạch thành công!`;
             }
-
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = approved_files.length === 1 ? `Fixed_${approved_files[0].filename}` : `Fixed_Timesheets_Batch.zip`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-
-            reviewUploadStatusText.textContent = `✅ Đã sửa lỗi & tải xuống file sạch thành công!`;
         } catch (err) {
             showNotification(`Lỗi: ${err.message}`, 'danger');
         } finally {
