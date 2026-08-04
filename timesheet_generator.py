@@ -188,11 +188,42 @@ def parse_val_to_float(val, default=None):
     except Exception:
         return default
 
+def resolve_cell_value_numeric(wb, val, default=0.0):
+    """
+    Resolves a cell value or formula string reference (e.g. '=Summary!L3') to a float.
+    """
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    val_str = str(val).strip()
+    if not val_str:
+        return default
+    if not val_str.startswith('='):
+        try:
+            return float(val_str)
+        except Exception:
+            return default
+
+    # If val is a formula like '=Summary!L3'
+    m = re.match(r'^=([A-Za-z0-9_ -]+)!([A-Z]+)(\d+)$', val_str, re.IGNORECASE)
+    if m:
+        target_sheet_name, col_str, row_str = m.group(1), m.group(2), int(m.group(3))
+        col_num = 0
+        for char in col_str.upper():
+            col_num = col_num * 26 + (ord(char) - ord('A') + 1)
+        for sname in wb.sheetnames:
+            if sname.strip().lower() == target_sheet_name.strip().lower():
+                target_cell_v = wb[sname].cell(row_str, col_num).value
+                return resolve_cell_value_numeric(wb, target_cell_v, default)
+
+    return default
+
 def extract_leave_balances_from_balance_sheet(wb):
     """
     Scans 'Balance Leave' or 'Balance' sheet in wb and returns a dictionary:
     resource_name_lower -> {'total_leave': float, 'leave_balance_upto': float}
-    Reads 'Leave Balance in <Month>' (current month net ending balance) as top priority.
+    Reads 'Leave Balance in <Month>' (Column J) directly or evaluates formula =G{r}-MAX(I{r}-H{r},0).
     """
     balances = {}
     bal_sheet = None
@@ -254,30 +285,26 @@ def extract_leave_balances_from_balance_sheet(wb):
             continue
             
         tot_val = bal_sheet.cell(r, tot_col).value if tot_col else 14
-        tot_res = resolve_formula_cell(wb, tot_val) if tot_val is not None else 14
-        tot_num = parse_val_to_float(tot_res, parse_val_to_float(tot_val, 14.0))
+        tot_num = resolve_cell_value_numeric(wb, tot_val, 14.0)
 
-        # Read Leave Balance in <Month> (current month) as priority 1
+        # 1. Read direct numeric value in Column J (Leave Balance in Month)
         in_val = bal_sheet.cell(r, in_col).value if in_col else None
-        in_res = resolve_formula_cell(wb, in_val) if in_val is not None else None
-        in_float = parse_val_to_float(in_res, parse_val_to_float(in_val, None))
+        in_float = parse_val_to_float(in_val, None)
 
         if in_float is not None:
             net_bal = in_float
         else:
+            # 2. Evaluate Excel formula =G{r}-MAX(I{r}-H{r},0) by resolving cell references from Balance Leave & Summary sheets
             upto_val = bal_sheet.cell(r, upto_col).value if upto_col else None
-            upto_res = resolve_formula_cell(wb, upto_val) if upto_val is not None else None
-            upto_num = parse_val_to_float(upto_res, parse_val_to_float(upto_val, 10.0))
+            upto_num = resolve_cell_value_numeric(wb, upto_val, 10.0)
 
             annual_val = bal_sheet.cell(r, annual_col).value if annual_col else None
-            annual_res = resolve_formula_cell(wb, annual_val) if annual_val is not None else None
-            annual_num = parse_val_to_float(annual_res, parse_val_to_float(annual_val, 0.0))
+            annual_num = resolve_cell_value_numeric(wb, annual_val, 0.0)
 
             lieu_val = bal_sheet.cell(r, lieu_col).value if lieu_col else None
-            lieu_res = resolve_formula_cell(wb, lieu_val) if lieu_val is not None else None
-            lieu_num = parse_val_to_float(lieu_res, parse_val_to_float(lieu_val, 0.0))
+            lieu_num = resolve_cell_value_numeric(wb, lieu_val, 0.0)
 
-            net_bal = max(upto_num - annual_num + lieu_num, 0.0)
+            net_bal = max(upto_num - max(annual_num - lieu_num, 0.0), 0.0)
 
         balances[r_name_clean] = {
             'total_leave': tot_num,
