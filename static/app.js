@@ -549,11 +549,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function deleteDomainTemplate(domainKey, templateName) {
         const isEn = currentLang === 'en';
+        const title = isEn ? '⚠️ Delete Template File' : '⚠️ Xác Nhận Xóa Template';
         const confirmMsg = isEn 
-            ? `Are you sure you want to delete template "${templateName}"?` 
+            ? `Are you sure you want to delete template file "${templateName}"?` 
             : `Bạn có chắc chắn muốn xóa file template "${templateName}" không?`;
-        
-        if (!confirm(confirmMsg)) return;
+        const okText = isEn ? 'Delete File' : 'Xóa File';
+        const cancelText = isEn ? 'Cancel' : 'Hủy Bỏ';
+
+        const confirmed = await showConfirmDialog(title, confirmMsg, null, okText, cancelText);
+        if (!confirmed) return;
 
         try {
             const res = await fetch('/api/delete-domain', {
@@ -572,7 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await loadDomains();
         } catch (err) {
             console.error('Error deleting domain template:', err);
-            showNotification(`❌ ${err.message}`, 'error');
+            showNotification(`❌ ${err.message}`, 'danger');
         }
     }
 
@@ -996,7 +1000,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     async function generateTimesheets() {
         if (!state.selectedDomainKeys.length) {
             const isEn = currentLang === 'en';
-            alert(isEn ? 'Please select at least 1 Domain to generate timesheet.' : 'Vui lòng chọn ít nhất 1 Domain để tạo timesheet.');
+            showNotification(isEn ? 'Please select at least 1 Domain to generate timesheets.' : 'Vui lòng chọn ít nhất 1 Domain để tạo timesheet.', 'warning');
             return;
         }
 
@@ -1045,9 +1049,10 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             a.remove();
             window.URL.revokeObjectURL(downloadUrl);
 
+            showNotification(isEn ? '✅ Successfully generated & downloaded Timesheets!' : '✅ Đã khởi tạo và tải về tệp Timesheet thành công!', 'success');
         } catch (err) {
             console.error('Generation error:', err);
-            alert(`Lỗi: ${err.message}`);
+            showNotification(isEn ? `Error: ${err.message}` : `Lỗi: ${err.message}`, 'danger');
         } finally {
             hideLoading();
         }
@@ -1262,45 +1267,50 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     window.showNotification = showNotification;
 
     // Custom Glassmorphic Confirm Dialog System (replaces native confirm())
-    function showConfirmDialog(title, message, onConfirm, okText = "Xác Nhận", cancelText = "Hủy Bỏ") {
-        const confirmModal = document.getElementById('confirmModal');
-        const confirmModalTitle = document.getElementById('confirmModalTitle');
-        const confirmModalMessage = document.getElementById('confirmModalMessage');
-        const btnConfirmOk = document.getElementById('btnConfirmOk');
-        const btnConfirmCancel = document.getElementById('btnConfirmCancel');
-        const btnConfirmClose = document.getElementById('btnConfirmClose');
+    function showConfirmDialog(title, message, onConfirm = null, okText = "Confirm", cancelText = "Cancel") {
+        return new Promise((resolve) => {
+            const confirmModal = document.getElementById('confirmModal');
+            const confirmModalTitle = document.getElementById('confirmModalTitle');
+            const confirmModalMessage = document.getElementById('confirmModalMessage');
+            const btnConfirmOk = document.getElementById('btnConfirmOk');
+            const btnConfirmCancel = document.getElementById('btnConfirmCancel');
+            const btnConfirmClose = document.getElementById('btnConfirmClose');
 
-        if (!confirmModal) {
-            if (window.confirm(message)) onConfirm();
-            return;
-        }
+            if (!confirmModal) {
+                if (onConfirm) onConfirm();
+                resolve(true);
+                return;
+            }
 
-        confirmModalTitle.textContent = title;
-        confirmModalMessage.textContent = message;
-        btnConfirmOk.textContent = okText;
-        btnConfirmCancel.textContent = cancelText;
+            confirmModalTitle.textContent = title;
+            confirmModalMessage.textContent = message;
+            btnConfirmOk.textContent = okText;
+            btnConfirmCancel.textContent = cancelText;
 
-        confirmModal.classList.add('active');
+            confirmModal.classList.add('active');
 
-        function cleanup() {
-            confirmModal.classList.remove('active');
-            btnConfirmOk.removeEventListener('click', handleOk);
-            btnConfirmCancel.removeEventListener('click', handleCancel);
-            btnConfirmClose.removeEventListener('click', handleCancel);
-        }
+            function cleanup() {
+                confirmModal.classList.remove('active');
+                btnConfirmOk.removeEventListener('click', handleOk);
+                btnConfirmCancel.removeEventListener('click', handleCancel);
+                btnConfirmClose.removeEventListener('click', handleCancel);
+            }
 
-        function handleOk() {
-            cleanup();
-            if (onConfirm) onConfirm();
-        }
+            function handleOk() {
+                cleanup();
+                if (onConfirm) onConfirm();
+                resolve(true);
+            }
 
-        function handleCancel() {
-            cleanup();
-        }
+            function handleCancel() {
+                cleanup();
+                resolve(false);
+            }
 
-        btnConfirmOk.addEventListener('click', handleOk);
-        btnConfirmCancel.addEventListener('click', handleCancel);
-        btnConfirmClose.addEventListener('click', handleCancel);
+            btnConfirmOk.addEventListener('click', handleOk);
+            btnConfirmCancel.addEventListener('click', handleCancel);
+            btnConfirmClose.addEventListener('click', handleCancel);
+        });
     }
     window.showConfirmDialog = showConfirmDialog;
 
