@@ -113,7 +113,11 @@ def scan_available_domain_templates(template_dir: str = 'timesheets_extracted'):
     files = glob.glob(os.path.join(template_dir, "*.xlsx"))
     for fpath in sorted(files):
         if not zipfile.is_zipfile(fpath):
-            continue
+            import time
+            time.sleep(0.2)
+            if not zipfile.is_zipfile(fpath):
+                continue
+                
         fname = os.path.basename(fpath)
         key = None
         for k, v in DOMAIN_FILE_MAP.items():
@@ -125,9 +129,17 @@ def scan_available_domain_templates(template_dir: str = 'timesheets_extracted'):
         if not key:
             key = clean_name.lower().replace(' ', '_').replace('-', '_')
             
-        display_name = DOMAIN_NAMES.get(key)
+        base_key = key
+        counter = 2
+        while key in domains and domains[key]['filename'] != fname:
+            key = f"{base_key}_{counter}"
+            counter += 1
+
+        display_name = DOMAIN_NAMES.get(base_key) or DOMAIN_NAMES.get(key)
         if not display_name:
             display_name = clean_name.replace('_', ' ')
+            if counter > 2:
+                display_name = f"{display_name} ({counter-1})"
             
         domains[key] = {
             'key': key,

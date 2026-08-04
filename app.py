@@ -63,30 +63,18 @@ def get_domains():
     # Check if user has uploaded any custom domain templates
     custom_keys = [k for k, info in available_domains.items() if info.get('filename') != 'FPT_CBG_CRM-OM_Domain_Timesheet_Template.xlsx']
     
-    predefined_keys = list(DOMAIN_FILE_MAP.keys())
-    for key in predefined_keys:
-        if key in available_domains:
-            info = available_domains[key]
-            # Hide default fallback template if user has uploaded custom templates
-            if custom_keys and info.get('filename') == 'FPT_CBG_CRM-OM_Domain_Timesheet_Template.xlsx':
-                continue
-            domains_list.append({
-                'key': key,
-                'name': info['name'],
-                'template': info['filename'],
-                'available': True,
-                'is_custom': False
-            })
-            
     for key, info in available_domains.items():
-        if key not in predefined_keys:
-            domains_list.append({
-                'key': key,
-                'name': info['name'],
-                'template': info['filename'],
-                'available': True,
-                'is_custom': True
-            })
+        # Hide default fallback template if user has uploaded custom templates
+        if custom_keys and info.get('filename') == 'FPT_CBG_CRM-OM_Domain_Timesheet_Template.xlsx':
+            continue
+            
+        domains_list.append({
+            'key': key,
+            'name': info['name'],
+            'template': info['filename'],
+            'available': True,
+            'is_custom': info.get('filename') != 'FPT_CBG_CRM-OM_Domain_Timesheet_Template.xlsx'
+        })
             
     return jsonify({'domains': domains_list})
 
