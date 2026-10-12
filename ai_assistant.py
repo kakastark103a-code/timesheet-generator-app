@@ -22,22 +22,24 @@ def audit_timesheet_data(summary_data, balance_data, timesheet_data, month_str):
         'ph support', 'weekend support', 'weekday support'
     ]
 
-    # 1. Audit Leave Balance Sheet
+    # 1. Audit Leave Balance Sheet / Summary Leave Balances
     for r_idx, row in enumerate(balance_data, start=3):
         name = row.get('name', 'Unknown')
         bal_in = row.get('balance_in_month')
         if isinstance(bal_in, (int, float)) and bal_in < 0:
             add_needed = abs(bal_in)
             cur_upto = row.get('balance_upto') or 10
+            sheet_target = row.get('sheet_name', 'Balance Leave')
+            target_col_desc = 'Leave Balance- Up to each month (Cột N)' if sheet_target == 'Summary' else 'Balance Upto (Cột G)'
             anomalies.append({
                 'id': f"fix_{idx}",
                 'type': 'danger',
                 'category': 'Leave Balance Error',
-                'sheet': 'Balance Leave',
-                'row_index': r_idx,
+                'sheet': sheet_target,
+                'row_index': row.get('row_index', r_idx),
                 'member': name,
                 'date': '--',
-                'target_field': 'Balance Upto (Cột G)',
+                'target_field': target_col_desc,
                 'current_value': str(cur_upto),
                 'proposed_value': str(cur_upto + add_needed),
                 'message': f"Nhân sự <strong>{name}</strong> bị <strong>âm phép</strong> cuối tháng: {bal_in} ngày.",
@@ -276,6 +278,25 @@ def apply_fixes_to_workbook(wb, fix_actions):
                             add_val = act.get('add_upto', 0)
                             if isinstance(cur_upto, (int, float)):
                                 sheet_bal.cell(r, 7).value = cur_upto + add_val
+            elif 'Summary' in wb.sheetnames:
+                sheet_sum = wb['Summary']
+                is_sep2026 = (str(sheet_sum.cell(1, 1).value or '').strip().lower() == 'month')
+                start_r = 3 if is_sep2026 else 2
+                col_upto = 14 if is_sep2026 else None
+                if col_upto:
+                    for r in range(start_r, sheet_sum.max_row + 1):
+                        name_cell = sheet_sum.cell(r, 2).value
+                        if name_cell and target_name in str(name_cell).lower():
+                            if custom_val is not None and str(custom_val).strip() != '':
+                                try:
+                                    sheet_sum.cell(r, col_upto).value = float(custom_val)
+                                except Exception:
+                                    pass
+                            else:
+                                cur_upto = sheet_sum.cell(r, col_upto).value or 10
+                                add_val = act.get('add_upto', 0)
+                                if isinstance(cur_upto, (int, float)):
+                                    sheet_sum.cell(r, col_upto).value = cur_upto + add_val
 
     # Clear active AutoFilter criteria across all worksheets
     try:

@@ -922,9 +922,21 @@ body {
 }
 
 .ph-tag.sg-holiday {
-    background: rgba(56, 189, 248, 0.15);
-    border-color: rgba(56, 189, 248, 0.4);
-    color: #7dd3fc;
+    background: rgba(16, 206, 103, 0.15);
+    border-color: rgba(16, 206, 103, 0.4);
+    color: #34d399;
+}
+
+.ph-tag.bg-danger {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #f87171;
+}
+
+.ph-tag.warning {
+    background: rgba(245, 158, 11, 0.2);
+    border-color: rgba(245, 158, 11, 0.5);
+    color: #fbbf24;
 }
 
 .ph-remove {
@@ -993,57 +1005,153 @@ body {
     color: var(--text-dim);
 }
 
-/* Calendar Days Grid Preview */
+/* Calendar Days Grid Preview - 7-Column Standard Calendar Grid */
 .days-grid-wrapper {
-    max-height: 320px;
+    max-height: 520px;
     overflow-y: auto;
-    padding-right: 0.3rem;
+    overflow-x: auto;
+    padding-right: 0.4rem;
+    border-radius: var(--radius-md);
+}
+
+.days-grid-wrapper::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.days-grid-wrapper::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.4);
+    border-radius: 999px;
+}
+.days-grid-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.3);
+    border-radius: 999px;
+}
+.days-grid-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.5);
+}
+
+.calendar-weekday-headers {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(85px, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 0.6rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px 8px 0 0;
+}
+
+.weekday-header {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.weekday-header.weekend-header {
+    color: #f87171;
 }
 
 .days-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    grid-template-columns: repeat(7, minmax(85px, 1fr));
     gap: 0.6rem;
 }
 
 .day-cell {
-    padding: 0.6rem;
-    border-radius: var(--radius-sm);
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid var(--card-border);
-    font-size: 0.82rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 72px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
 }
 
+.day-cell.empty-day {
+    background: rgba(15, 23, 42, 0.15);
+    border: 1px dashed rgba(255, 255, 255, 0.04);
+    opacity: 0.2;
+    pointer-events: none;
+    min-height: 72px;
+}
+
+.day-cell:hover:not(.empty-day) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* Working Days Card - Dark Teal/Emerald Glass */
 .day-cell.working {
-    border-color: rgba(16, 185, 129, 0.3);
-    background: rgba(16, 185, 129, 0.06);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    background: linear-gradient(135deg, rgba(6, 44, 34, 0.65), rgba(15, 23, 42, 0.85));
+    box-shadow: inset 0 1px 0 rgba(16, 185, 129, 0.15);
 }
 
+.day-cell.working:hover {
+    border-color: rgba(16, 185, 129, 0.6);
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.18);
+}
+
+/* Weekend Days Card - Dark Crimson/Reddish Glass */
 .day-cell.weekend {
-    opacity: 0.5;
-    border-color: rgba(239, 68, 68, 0.2);
-    background: rgba(239, 68, 68, 0.05);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    background: linear-gradient(135deg, rgba(44, 16, 24, 0.55), rgba(15, 23, 42, 0.85));
+    opacity: 0.88;
 }
 
+.day-cell.weekend:hover {
+    border-color: rgba(239, 68, 68, 0.45);
+    opacity: 1;
+    box-shadow: 0 8px 20px rgba(239, 68, 68, 0.15);
+}
+
+/* Public Holiday Card - Dark Gold/Amber Glass */
 .day-cell.holiday {
-    border-color: rgba(245, 158, 11, 0.4);
-    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    background: linear-gradient(135deg, rgba(45, 30, 10, 0.65), rgba(15, 23, 42, 0.85));
+}
+
+.day-cell.holiday:hover {
+    border-color: rgba(245, 158, 11, 0.7);
+    box-shadow: 0 8px 20px rgba(245, 158, 11, 0.22);
 }
 
 .day-date {
     font-weight: 700;
-    color: #fff;
+    font-size: 1.1rem;
+    color: #ffffff;
+    letter-spacing: -0.01em;
 }
 
 .day-status {
-    font-size: 0.72rem;
-    margin-top: 0.2rem;
+    font-size: 0.78rem;
+    margin-top: 0.35rem;
     font-weight: 600;
+    line-height: 1.2;
 }
 
-.day-cell.working .day-status { color: #34d399; }
-.day-cell.weekend .day-status { color: #f87171; }
-.day-cell.holiday .day-status { color: #fbbf24; }
+.day-cell.working .day-status { 
+    color: #34d399; 
+}
+
+.day-cell.weekend .day-status { 
+    color: #f87171; 
+}
+
+.day-cell.holiday .day-status { 
+    color: #fbbf24; 
+}
 
 /* Formulas Info List */
 .formula-list {

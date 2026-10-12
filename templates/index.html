@@ -242,6 +242,15 @@ Duong Thi Tuyet Mai	MaiDTT23	Digital Domain	7-May has 2 Project Task lines => Up
                             </div>
 
                             <div class="days-grid-wrapper">
+                                <div class="calendar-weekday-headers">
+                                    <div class="weekday-header">Mon</div>
+                                    <div class="weekday-header">Tue</div>
+                                    <div class="weekday-header">Wed</div>
+                                    <div class="weekday-header">Thu</div>
+                                    <div class="weekday-header">Fri</div>
+                                    <div class="weekday-header weekend-header">Sat</div>
+                                    <div class="weekday-header weekend-header">Sun</div>
+                                </div>
                                 <div class="days-grid" id="daysGrid">
                                     <!-- Populated dynamically -->
                                 </div>
@@ -385,6 +394,15 @@ Dao Manh Ha	HaDM	CBG CRM_OM_ AD	10-Jul OT 8h Weekend support"></textarea>
                         </div>
                         <div class="card-body">
                             <div class="days-grid-wrapper">
+                                <div class="calendar-weekday-headers">
+                                    <div class="weekday-header">Mon</div>
+                                    <div class="weekday-header">Tue</div>
+                                    <div class="weekday-header">Wed</div>
+                                    <div class="weekday-header">Thu</div>
+                                    <div class="weekday-header">Fri</div>
+                                    <div class="weekday-header weekend-header">Sat</div>
+                                    <div class="weekday-header weekend-header">Sun</div>
+                                </div>
                                 <div class="days-grid" id="indivDaysGrid">
                                     <!-- Dynamic calendar -->
                                 </div>
@@ -504,6 +522,71 @@ Dao Manh Ha	HaDM	CBG CRM_OM_ AD	10-Jul OT 8h Weekend support"></textarea>
                 </div>
             </div>
 
+            <!-- Validation Checklist Summary & Export Card -->
+            <div class="card glass-card" id="checklistSummaryCard" style="display: none; margin-bottom: 1.5rem; border: 1px solid rgba(91,155,213,0.35); background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.8rem; padding: 1.1rem 1.4rem;">
+                    <div class="header-title-flex">
+                        <span class="card-icon" style="background: rgba(91,155,213,0.2); color: #5b9bd5;">📋</span>
+                        <div>
+                            <h2 style="font-size: 1.15rem; margin-bottom: 0.2rem; color: #fff;">Timesheet Validation Checklist (Digital Team - Sep2026)</h2>
+                            <p class="help-text" style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">
+                                Tự động kiểm toán theo 27 tiêu chí quy chuẩn khách hàng Singapore & Digital Team
+                            </p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
+                        <span id="checklistBadgeStatus" class="ph-tag sg-holiday" style="font-size: 0.88rem; padding: 0.45rem 0.9rem; font-weight: 700;">
+                            ✅ Sẵn sàng gửi khách hàng
+                        </span>
+                        <a id="btnDownloadChecklistHeader" class="btn btn-primary" href="#" target="_blank" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600;">
+                            <span>📥 Tải File Checklist (.xlsx)</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body" style="padding: 1.2rem 1.4rem;">
+                    <div class="checklist-kpi-row" style="display: flex; gap: 1rem; margin-bottom: 1.2rem; flex-wrap: wrap;">
+                        <div style="background: rgba(16,206,103,0.08); border: 1px solid rgba(16,206,103,0.3); padding: 0.85rem 1.2rem; border-radius: var(--radius-sm); flex: 1; min-width: 140px;">
+                            <div style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px;">TIÊU CHÍ ĐẠT</div>
+                            <div id="checklistPassedCount" style="font-size: 1.45rem; font-weight: 700; color: var(--primary); margin-top: 0.2rem;">27 / 27</div>
+                        </div>
+                        <div style="background: rgba(255,170,0,0.08); border: 1px solid rgba(255,170,0,0.3); padding: 0.85rem 1.2rem; border-radius: var(--radius-sm); flex: 1; min-width: 140px;">
+                            <div style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px;">CẢNH BÁO</div>
+                            <div id="checklistWarnCount" style="font-size: 1.45rem; font-weight: 700; color: #ffaa00; margin-top: 0.2rem;">0</div>
+                        </div>
+                        <div style="background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); padding: 0.85rem 1.2rem; border-radius: var(--radius-sm); flex: 1; min-width: 140px;">
+                            <div style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px;">KHÔNG ĐẠT</div>
+                            <div id="checklistFailedCount" style="font-size: 1.45rem; font-weight: 700; color: #ff4d4d; margin-top: 0.2rem;">0</div>
+                        </div>
+                        <div style="background: rgba(91,155,213,0.08); border: 1px solid rgba(91,155,213,0.3); padding: 0.85rem 1.2rem; border-radius: var(--radius-sm); flex: 1; min-width: 140px;">
+                            <div style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px;">ĐỘ TUÂN THỦ</div>
+                            <div id="checklistRate" style="font-size: 1.45rem; font-weight: 700; color: #5b9bd5; margin-top: 0.2rem;">100%</div>
+                        </div>
+                    </div>
+
+                    <details id="checklistAccordionDetails" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-sm); padding: 0.85rem 1rem;">
+                        <summary style="font-weight: 600; cursor: pointer; color: var(--text-primary); outline: none; user-select: none;">
+                            👁️ Chi tiết kết quả kiểm tra 27 tiêu chí (Bấm để xem/ẩn bảng chi tiết)
+                        </summary>
+                        <div class="members-table-wrapper" style="margin-top: 1rem; max-height: 440px; overflow-y: auto;">
+                            <table class="members-table" style="font-size: 0.86rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px; text-align: center;">STT</th>
+                                        <th style="width: 110px;">Nhóm</th>
+                                        <th>Nội dung kiểm tra</th>
+                                        <th style="width: 115px; text-align: center;">Trạng thái</th>
+                                        <th>Tham chiếu / Bằng chứng</th>
+                                        <th>Ghi chú kiểm tra</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="checklistDetailsTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
             <!-- Auto-Fix Action Bar Footer -->
             <div class="card glass-card action-card" id="autoFixActionBar" style="display: none; margin-top: 1.5rem;">
                 <div class="card-body" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
@@ -511,9 +594,14 @@ Dao Manh Ha	HaDM	CBG CRM_OM_ AD	10-Jul OT 8h Weekend support"></textarea>
                         <h3 style="color: #fff; font-size: 1.15rem; margin-bottom: 0.3rem;">⚡ Approve & Auto-Fix Errors</h3>
                         <p class="help-text" style="margin: 0;">Apply selected fix options directly into Excel files and export clean 100% compliant workbooks.</p>
                     </div>
-                    <button type="button" class="btn btn-primary btn-lg" id="btnApplyApprovedFixes">
-                        🚀 Approve Fixes & Download Clean Files (.xlsx / .zip)
-                    </button>
+                    <div style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
+                        <a id="btnDownloadChecklistAction" class="btn btn-outline btn-lg" href="#" target="_blank" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem;">
+                            <span>📋</span> <span>Xuất Checklist Kiểm Toán (.xlsx)</span>
+                        </a>
+                        <button type="button" class="btn btn-primary btn-lg" id="btnApplyApprovedFixes">
+                            🚀 Approve Fixes & Download Clean Files (.xlsx / .zip)
+                        </button>
+                    </div>
                 </div>
             </div>
         </main>

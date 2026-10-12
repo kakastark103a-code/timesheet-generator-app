@@ -19,7 +19,7 @@ except ImportError:
 MONTH_NAMES_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 DOMAIN_FILE_MAP = {
-    'cbg': 'FPT_CBG_CRM-OM_Domain_Timesheet_Template.xlsx',
+    'cbg': 'FPT_CBG_CRM-OM_Domain_Timesheet_Sep2026.xlsx',
 }
 
 DOMAIN_NAMES = {
@@ -323,6 +323,87 @@ def extract_leave_balances_from_balance_sheet(wb_data, wb_raw=None):
 
     return balances
 
+def extract_summary_and_balance_data(wb):
+    """
+    Extracts summary_data and balance_data uniformly from either:
+    1. Sep2026 format: Summary sheet (Row 1 Month, Row 2 Headers, Leave Balances in Col N & O)
+    2. Legacy format: Summary sheet (Row 1 Headers) + separate Balance Leave sheet
+    """
+    summary_data = []
+    balance_data = []
+
+    sheet_sum = wb['Summary'] if 'Summary' in wb.sheetnames else None
+    if sheet_sum:
+        is_sep2026 = (str(sheet_sum.cell(1, 1).value or '').strip().lower() == 'month')
+        if not is_sep2026:
+            for c in range(1, min(sheet_sum.max_column + 1, 20)):
+                v2 = str(sheet_sum.cell(2, c).value or '').strip().lower()
+                if 'actual normal working days' in v2 or 'calendar wd' in v2:
+                    is_sep2026 = True
+                    break
+
+        if is_sep2026:
+            for r in range(3, sheet_sum.max_row + 1):
+                name = sheet_sum.cell(r, 2).value
+                if name and not str(name).startswith('='):
+                    s_name = str(name).strip()
+                    summary_data.append({
+                        'no': sheet_sum.cell(r, 1).value,
+                        'name': s_name,
+                        'fsoft_account': sheet_sum.cell(r, 3).value,
+                        'team': sheet_sum.cell(r, 4).value,
+                        'location': sheet_sum.cell(r, 5).value,
+                        'working_days': sheet_sum.cell(r, 8).value,
+                        'weekday_ot': sheet_sum.cell(r, 9).value,
+                        'weekend_ot': sheet_sum.cell(r, 10).value,
+                        'ph_ot': sheet_sum.cell(r, 11).value,
+                        'leaves': sheet_sum.cell(r, 12).value,
+                        'payable_leaves': sheet_sum.cell(r, 13).value,
+                        'total_ot': sheet_sum.cell(r, 17).value
+                    })
+                    balance_data.append({
+                        'sheet_name': 'Summary',
+                        'row_index': r,
+                        'name': s_name,
+                        'total_leave': 14,
+                        'balance_upto': sheet_sum.cell(r, 14).value,
+                        'balance_in_month': sheet_sum.cell(r, 15).value
+                    })
+        else:
+            for r in range(2, sheet_sum.max_row + 1):
+                name = sheet_sum.cell(r, 2).value
+                if name and not str(name).startswith('='):
+                    summary_data.append({
+                        'no': sheet_sum.cell(r, 1).value,
+                        'name': str(name).strip(),
+                        'team': sheet_sum.cell(r, 3).value,
+                        'lead': sheet_sum.cell(r, 4).value,
+                        'location': sheet_sum.cell(r, 5).value,
+                        'working_days': sheet_sum.cell(r, 6).value,
+                        'weekend_ot': sheet_sum.cell(r, 7).value,
+                        'weekday_ot': sheet_sum.cell(r, 8).value,
+                        'ph_ot': sheet_sum.cell(r, 9).value,
+                        'total_ot': sheet_sum.cell(r, 10).value,
+                        'leaves': sheet_sum.cell(r, 11).value
+                    })
+
+    bal_sheet_name = 'Balance Leave' if 'Balance Leave' in wb.sheetnames else ('Leave Balance' if 'Leave Balance' in wb.sheetnames else None)
+    if bal_sheet_name and not balance_data:
+        sheet = wb[bal_sheet_name]
+        for r in range(3, sheet.max_row + 1):
+            name = sheet.cell(r, 2).value
+            if name and not str(name).startswith('='):
+                balance_data.append({
+                    'sheet_name': bal_sheet_name,
+                    'row_index': r,
+                    'name': str(name).strip(),
+                    'total_leave': sheet.cell(r, 6).value,
+                    'balance_upto': sheet.cell(r, 7).value,
+                    'balance_in_month': sheet.cell(r, 10).value
+                })
+
+    return summary_data, balance_data
+
 def extract_resources_from_summary(wb_data, wb_raw=None):
     """
     Extracts resource list with metadata (Name, Team, Lead, Location, Total Leave, Leave Balance Upto) from Summary & Balance Leave sheets.
@@ -363,21 +444,25 @@ def extract_resources_from_summary(wb_data, wb_raw=None):
     if not name_col:
         name_col = 2  # default Col B
 
+    account_col = None
+    for k in ['fsoft account', 'account', 'fsoft']:
+        if k in col_map:
+            account_col = col_map[k]
+            break
+
     team_col = None
     for k in ['team', 'phòng ban', 'bộ phận', 'group']:
         if k in col_map:
             team_col = col_map[k]
             break
     if not team_col:
-        team_col = 3
+        team_col = 4 if account_col else 3
 
     lead_col = None
     for k in ['lead', 'leader', 'quản lý']:
         if k in col_map:
             lead_col = col_map[k]
             break
-    if not lead_col:
-        lead_col = 4
 
     loc_col = None
     for k in ['location', 'vị trí', 'onsite/offshore', 'role']:
@@ -386,6 +471,12 @@ def extract_resources_from_summary(wb_data, wb_raw=None):
             break
     if not loc_col:
         loc_col = 5
+
+    upto_col = None
+    for k in col_map:
+        if 'leave balance- up to' in k or 'leave balance upto' in k or 'balance upto' in k:
+            upto_col = col_map[k]
+            break
 
     for r in range(header_row + 1, sheet.max_row + 1):
         raw_name = sheet.cell(r, name_col).value
@@ -400,6 +491,7 @@ def extract_resources_from_summary(wb_data, wb_raw=None):
         if name_clean.lower() in ['total', 'tổng', 'stt', 'no', 'none', 'name', 'resource', 'họ và tên', '0']:
             continue
             
+        fsoft_val = sheet.cell(r, account_col).value if account_col else ""
         team_val = sheet.cell(r, team_col).value if team_col else ""
         lead_val = sheet.cell(r, lead_col).value if lead_col else ""
         loc_val = sheet.cell(r, loc_col).value if loc_col else "Offshore"
@@ -407,13 +499,21 @@ def extract_resources_from_summary(wb_data, wb_raw=None):
         r_name_lower = name_clean.lower()
         member_bal = bal_data.get(r_name_lower, {})
         tot_leave_val = member_bal.get('total_leave', 14)
-        leave_upto_val = member_bal.get('leave_balance_upto', 10)
+
+        raw_upto = None
+        if upto_col:
+            val_upto = sheet.cell(r, upto_col).value
+            if val_upto is not None and not str(val_upto).startswith('='):
+                raw_upto = parse_val_to_float(val_upto, None)
+                
+        leave_upto_val = member_bal.get('leave_balance_upto') or raw_upto or 10
 
         resources.append({
             'row': r,
             'name': name_clean,
+            'fsoft_account': str(resolve_formula_cell(wb_data, fsoft_val) or "").strip(),
             'team': str(resolve_formula_cell(wb_data, team_val) or "").strip(),
-            'lead': str(resolve_formula_cell(wb_data, lead_val) or "").strip(),
+            'lead': str(resolve_formula_cell(wb_data, lead_val) or "").strip() if lead_col else "",
             'location': str(resolve_formula_cell(wb_data, loc_val) or "Offshore").strip(),
             'vendor': 'FPT',
             'total_leave': tot_leave_val,
@@ -595,6 +695,27 @@ def find_and_read_prev_month_leave_balances(domain_key: str, year: int, month: i
                         lieu_num = float(lieu_val) if isinstance(lieu_val, (int, float)) else 0.0
 
                         prev_balances[res_name] = max(upto_num - annual_num + lieu_num, 0.0)
+        if not prev_balances and sheet_sum_name:
+            sheet_sum = wb[sheet_sum_name]
+            sum_rows = list(sheet_sum.iter_rows(values_only=True))
+            sum_col_map = {}
+            for r_idx in range(min(4, len(sum_rows))):
+                for c_idx, v in enumerate(sum_rows[r_idx]):
+                    if v and str(v).strip().lower() not in sum_col_map:
+                        sum_col_map[str(v).strip().lower()] = c_idx + 1
+            sum_name_col = sum_col_map.get('name', 2)
+            after_col = None
+            for h, c in sum_col_map.items():
+                if 'leave balance- after' in h or 'leave balance after' in h:
+                    after_col = c
+                    break
+            if after_col:
+                for sr in range(1, len(sum_rows)):
+                    s_name = sum_rows[sr][sum_name_col - 1] if len(sum_rows[sr]) >= sum_name_col else None
+                    if s_name and not str(s_name).startswith('='):
+                        val_after = sum_rows[sr][after_col - 1] if len(sum_rows[sr]) >= after_col else None
+                        if isinstance(val_after, (int, float)):
+                            prev_balances[str(s_name).strip().lower()] = float(val_after)
         wb.close()
     except Exception as e:
         print(f"Error reading prev month balances: {e}")
@@ -750,14 +871,14 @@ def apply_work_item_conditional_formatting(sheet_ts, max_r):
     sheet_ts.conditional_formatting.add(cf_range, red_rule)
     sheet_ts.conditional_formatting.add(cf_range, brown_rule)
 
-def format_sheet_dimensions_and_alignment(ws, sheet_name='Timesheet', resources_count=None):
+def format_sheet_dimensions_and_alignment(ws, sheet_name='Timesheet', resources_count=None, is_sep2026=False):
     """
     Standardizes row heights, column widths, thin borders ONLY for table content on Summary & Balance Leave sheets, and cell alignments.
     Timesheet sheet has NO explicit borders applied per user directive.
     """
     ws.row_dimensions[1].height = 28
-    if sheet_name in ['Balance Leave', 'Leave Balance']:
-        ws.row_dimensions[2].height = 22
+    if sheet_name in ['Balance Leave', 'Leave Balance'] or (sheet_name == 'Summary' and is_sep2026):
+        ws.row_dimensions[2].height = 28 if is_sep2026 else 22
 
     # Determine max_data_col (last column with header text)
     max_data_col = 0
@@ -769,11 +890,13 @@ def format_sheet_dimensions_and_alignment(ws, sheet_name='Timesheet', resources_
             max_data_col = c
     if max_data_col == 0:
         max_data_col = max_search_col
+    if sheet_name == 'Summary' and is_sep2026:
+        max_data_col = 18
 
     # Determine max_data_row (content rows only)
     if resources_count is not None and resources_count > 0:
         if sheet_name == 'Summary':
-            max_data_row = resources_count + 1
+            max_data_row = resources_count + 2 if is_sep2026 else resources_count + 1
         elif sheet_name in ['Balance Leave', 'Leave Balance']:
             max_data_row = resources_count + 2
         else:
@@ -783,15 +906,21 @@ def format_sheet_dimensions_and_alignment(ws, sheet_name='Timesheet', resources_
 
     for r in range(1, max_data_row + 1):
         if r > 1:
-            ws.row_dimensions[r].height = 22
+            ws.row_dimensions[r].height = 28 if (r == 2 and is_sep2026 and sheet_name == 'Summary') else 22
             
         for c in range(1, max_data_col + 1):
             cell = ws.cell(r, c)
             
             if sheet_name != 'Timesheet':
-                cell.border = THIN_BORDER
+                if not (sheet_name == 'Summary' and is_sep2026 and r == 1):
+                    cell.border = THIN_BORDER
                     
-            if r == 1 or (r == 2 and sheet_name in ['Balance Leave', 'Leave Balance']):
+            if r == 1:
+                if sheet_name == 'Summary' and is_sep2026:
+                    cell.alignment = ALIGN_CENTER_CENTER
+                else:
+                    cell.alignment = ALIGN_CENTER_CENTER_WRAP
+            elif r == 2 and (sheet_name in ['Balance Leave', 'Leave Balance'] or (sheet_name == 'Summary' and is_sep2026)):
                 cell.alignment = ALIGN_CENTER_CENTER_WRAP
             else:
                 if sheet_name == 'Timesheet':
@@ -799,6 +928,11 @@ def format_sheet_dimensions_and_alignment(ws, sheet_name='Timesheet', resources_
                         cell.alignment = ALIGN_CENTER_CENTER
                     else:
                         cell.alignment = ALIGN_LEFT_CENTER
+                elif sheet_name == 'Summary' and is_sep2026:
+                    if c == 2:
+                        cell.alignment = ALIGN_LEFT_CENTER
+                    else:
+                        cell.alignment = ALIGN_CENTER_CENTER
                 else:
                     if c in [1, 6, 7, 8, 9, 10, 11, 12, 13]:
                         cell.alignment = ALIGN_CENTER_CENTER
@@ -814,9 +948,15 @@ def format_sheet_dimensions_and_alignment(ws, sheet_name='Timesheet', resources_
             1: 14, 2: 15, 3: 22, 4: 28, 5: 36, 6: 30, 7: 24, 8: 16, 9: 14, 10: 18
         }
     elif sheet_name == 'Summary':
-        col_widths = {
-            1: 8, 2: 24, 3: 16, 4: 16, 5: 14, 6: 22, 7: 20, 8: 20, 9: 20, 10: 20, 11: 16, 12: 14, 13: 16
-        }
+        if is_sep2026:
+            col_widths = {
+                1: 6, 2: 24, 3: 16, 4: 16, 5: 16, 6: 14, 7: 18, 8: 24,
+                9: 16, 10: 16, 11: 16, 12: 16, 13: 18, 14: 22, 15: 22, 16: 18, 17: 20, 18: 18
+            }
+        else:
+            col_widths = {
+                1: 8, 2: 24, 3: 16, 4: 16, 5: 14, 6: 22, 7: 20, 8: 20, 9: 20, 10: 20, 11: 16, 12: 14, 13: 16
+            }
     else:
         col_widths = {
             1: 8, 2: 24, 3: 16, 4: 16, 5: 14, 6: 22, 7: 26, 8: 18, 9: 18, 10: 28
@@ -839,10 +979,99 @@ def format_sheet_dimensions_and_alignment(ws, sheet_name='Timesheet', resources_
         for k in keys_to_delete:
             del ws.column_dimensions[k]
 
-def update_summary_sheet_dynamically(sheet_sum, resources):
+def update_summary_sheet_dynamically(sheet_sum, resources, year=None, month=None, parsed_overrides=None, domain_key=None, wb=None):
     """
-    Dynamically maps Row 1 header titles to exact formulas and column positions in Summary sheet.
+    Dynamically maps Row 1 & Row 2 header titles to exact formulas and column positions in Summary sheet.
+    Supports Sep2026 format (Row 1 Month, Row 2 Headers, 18 columns, Table Summary, Time sheet formulas)
+    and Legacy format (Row 1 Headers).
+    Returns True if Sep2026 format, False otherwise.
     """
+    is_sep2026 = False
+    if str(sheet_sum.cell(1, 1).value or '').strip().lower() == 'month':
+        is_sep2026 = True
+    else:
+        for c in range(1, min(sheet_sum.max_column + 1, 25)):
+            v2 = str(sheet_sum.cell(2, c).value or '').strip().lower()
+            if 'actual normal working days' in v2 or 'calendar wd' in v2:
+                is_sep2026 = True
+                break
+
+    if is_sep2026:
+        sheet_sum.cell(1, 1, 'Month')
+        if year and month:
+            target_dt = datetime(year, month, 1)
+            sheet_sum.cell(1, 2, target_dt)
+            sheet_sum.cell(1, 2).number_format = 'd-mmm-yy'
+
+        prev_month_balances = {}
+        if domain_key and year and month:
+            prev_month_balances = find_and_read_prev_month_leave_balances(domain_key, year, month)
+
+        template_balances = {}
+        for r in range(3, sheet_sum.max_row + 1):
+            name_val = sheet_sum.cell(r, 2).value
+            if name_val and not str(name_val).startswith('='):
+                v_upto = sheet_sum.cell(r, 14).value
+                if isinstance(v_upto, (int, float)):
+                    template_balances[str(name_val).strip().lower()] = float(v_upto)
+
+        max_r = sheet_sum.max_row
+        if max_r >= 3:
+            sheet_sum.delete_rows(3, amount=max_r - 2)
+
+        for i, res in enumerate(resources):
+            r = i + 3
+            res_name = res['name']
+            m_override = (parsed_overrides or {}).get(res_name.lower(), {})
+
+            if 'leave_balance_upto' in m_override:
+                leave_upto = m_override['leave_balance_upto']
+            elif res_name.lower() in prev_month_balances:
+                leave_upto = prev_month_balances[res_name.lower()]
+            elif 'leave_balance_upto' in res and res['leave_balance_upto'] is not None:
+                leave_upto = res['leave_balance_upto']
+            elif res_name.lower() in template_balances:
+                leave_upto = template_balances[res_name.lower()]
+            else:
+                leave_upto = 10.0
+
+            sheet_sum.cell(r, 1, '=ROW()-2')
+            sheet_sum.cell(r, 2, res_name)
+            sheet_sum.cell(r, 3, res.get('fsoft_account', ''))
+            sheet_sum.cell(r, 4, res.get('team', ''))
+            sheet_sum.cell(r, 5, res.get('location', 'Offshore'))
+            sheet_sum.cell(r, 6, '=IFERROR(IF(Summary[[#This Row],[Actual Normal Working days]]=0,0,(Summary[[#This Row],[Actual Normal Working days]]+Summary[[#This Row],[Payable Leave days]])/Summary[[#This Row],[Calendar WD per Month]]),0)')
+            sheet_sum.cell(r, 7, '=INDEX(Time!$D$3:$O$3,MATCH(Summary!$B$1,Time!$D$1:$O$1,0))')
+            sheet_sum.cell(r, 8, f'=SUMIFS(Timesheet!J:J,Timesheet!G:G,Summary!B{r},Timesheet!C:C,"Project Task")/8')
+            sheet_sum.cell(r, 9, f'=SUMIFS(Timesheet!J:J,Timesheet!G:G,Summary!B{r},Timesheet!C:C,"Weekday support")/8')
+            sheet_sum.cell(r, 10, f'=SUMIFS(Timesheet!J:J,Timesheet!G:G,Summary!B{r},Timesheet!C:C,"Weekend support")/8')
+            sheet_sum.cell(r, 11, f'=SUMIFS(Timesheet!J:J,Timesheet!G:G,Summary!B{r},Timesheet!C:C,"PH Support")/8')
+            sheet_sum.cell(r, 12, '=(SUMIFS(Timesheet!J:J,Timesheet!G:G,Summary[[#This Row],[Name]],Timesheet!C:C,"Leave")+SUMIFS(Timesheet!J:J,Timesheet!G:G,Summary[[#This Row],[Name]],Timesheet!C:C,"Half-day Leave")+SUMIFS(Timesheet!J:J,Timesheet!G:G,Summary[[#This Row],[Name]],Timesheet!C:C,"Comp-Off / Off-in-Lieu"))/8')
+            sheet_sum.cell(r, 13, '=IF(Summary[[#This Row],[Days off in lieu per month]]>0,IF(Summary[[#This Row],[Leave occur]]<=(Summary[[#This Row],[Leave Balance- Up to each month]]+Summary[[#This Row],[Days off in lieu per month]]),Summary[[#This Row],[Leave occur]],Summary[[#This Row],[Leave Balance- Up to each month]]+Summary[[#This Row],[Days off in lieu per month]]),IF(Summary[[#This Row],[Leave occur]]<=Summary[[#This Row],[Leave Balance- Up to each month]],Summary[[#This Row],[Leave occur]],Summary[[#This Row],[Leave Balance- Up to each month]]))')
+            sheet_sum.cell(r, 14, leave_upto)
+            sheet_sum.cell(r, 15, '=Summary[[#This Row],[Leave Balance- Up to each month]]-Summary[[#This Row],[Used Annual Leaves]]')
+            sheet_sum.cell(r, 16, '=Summary[[#This Row],[Payable Leave days]]-Summary[[#This Row],[Used Days off in lieu]]')
+            sheet_sum.cell(r, 17, '=SUM(Summary[[#This Row],[OT Weekdays]:[OT Holidays]])')
+            sheet_sum.cell(r, 18, '=IF(AND(Summary[[#This Row],[Days off in lieu per month]]>0,Summary[[#This Row],[Payable Leave days]]>0),IF(AND(Summary[[#This Row],[Leave occur]]>0,Summary[[#This Row],[Leave occur]]<=Summary[[#This Row],[Days off in lieu per month]]),Summary[[#This Row],[Leave occur]],Summary[[#This Row],[Days off in lieu per month]]),0)')
+
+            sheet_sum.cell(r, 6).number_format = '_(* #,##0.00_);_(* \(#,##0.00\);_(* \\-??_);_(@_)'
+            sheet_sum.cell(r, 7).number_format = '_(* #,##0.00_);_(* \(#,##0.00\);_(* \\-??_);_(@_)'
+
+        for tbl in sheet_sum.tables.values():
+            if tbl.name == 'Summary' or tbl.displayName == 'Summary':
+                tbl.ref = f"A2:R{len(resources) + 2}"
+
+        if wb and 'Time' in wb.sheetnames and year:
+            sheet_time = wb['Time']
+            for m in range(1, 13):
+                col_idx = m + 3
+                sheet_time.cell(1, col_idx).value = datetime(year, m, 1)
+                last_day = calendar.monthrange(year, m)[1]
+                sheet_time.cell(2, col_idx).value = datetime(year, m, last_day)
+
+        return True
+
+    # Legacy template handling
     col_map = {}
     for c in range(1, sheet_sum.max_column + 1):
         v = sheet_sum.cell(1, c).value
@@ -892,6 +1121,8 @@ def update_summary_sheet_dynamically(sheet_sum, resources):
                 sheet_sum.cell(r, col_idx, f'=COUNTIFS(Timesheet!G:G,Summary!{name_col_let}{r},Timesheet!C:C,\"Leave\")')
             elif 'public holiday' in h_key:
                 sheet_sum.cell(r, col_idx, f'=COUNTIFS(Timesheet!G:G,Summary!{name_col_let}{r},Timesheet!C:C,\"Public Holiday\")')
+
+    return False
 
 def update_balance_leave_sheet_dynamically(sheet_bal, resources, parsed_overrides, year, month, sheet_sum=None, domain_key=None):
     """
@@ -1222,6 +1453,10 @@ def generate_domain_timesheet(template_path: str, year: int, month: int, output_
                     except Exception:
                         pass
 
+        for tbl in sheet_ts.tables.values():
+            if tbl.name == 'Timesheet' or tbl.displayName == 'Timesheet':
+                tbl.ref = f"A1:J{current_row - 1}"
+
         apply_work_item_data_validation(sheet_ts)
         apply_work_item_conditional_formatting(sheet_ts, current_row - 1)
         format_sheet_dimensions_and_alignment(sheet_ts, 'Timesheet', res_count)
@@ -1229,8 +1464,11 @@ def generate_domain_timesheet(template_path: str, year: int, month: int, output_
     # 2. Update Summary Sheet Dynamically
     sheet_sum = wb['Summary'] if 'Summary' in wb.sheetnames else None
     if sheet_sum:
-        update_summary_sheet_dynamically(sheet_sum, resources)
-        format_sheet_dimensions_and_alignment(sheet_sum, 'Summary', res_count)
+        is_sep2026 = update_summary_sheet_dynamically(
+            sheet_sum, resources, year=year, month=month,
+            parsed_overrides=parsed_overrides, domain_key=domain_key, wb=wb
+        )
+        format_sheet_dimensions_and_alignment(sheet_sum, 'Summary', res_count, is_sep2026=is_sep2026)
 
     # 3. Update Balance Leave Sheet Dynamically with Previous Month Inherited Balances
     leave_sheet_name = 'Balance Leave' if 'Balance Leave' in wb.sheetnames else ('Leave Balance' if 'Leave Balance' in wb.sheetnames else None)
@@ -1264,9 +1502,12 @@ def trim_and_optimize_workbook(wb, max_ts_row=None, res_count=None):
         if title_lower == 'timesheet' and max_ts_row:
             actual_last_row = max_ts_row
         elif title_lower == 'summary' and res_count is not None:
-            actual_last_row = 1 + res_count  # 1 header row + N members
+            is_sep2026 = (str(ws.cell(1, 1).value or '').strip().lower() == 'month')
+            actual_last_row = (2 + res_count) if is_sep2026 else (1 + res_count)
         elif title_lower in ['balance leave', 'leave balance'] and res_count is not None:
             actual_last_row = 2 + res_count  # 2 header rows + N members
+        elif title_lower == 'time':
+            actual_last_row = max(ws.max_row, 8)
         else:
             # General content row scan
             for r in range(ws.max_row, 0, -1):

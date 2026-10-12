@@ -4,6 +4,7 @@ import re
 import zipfile
 import calendar
 import glob
+import urllib.parse
 from datetime import datetime, date
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
@@ -19,6 +20,7 @@ from timesheet_generator import (
     parse_comment_notes,
     trim_and_optimize_workbook,
     clean_domain_name_string,
+    extract_summary_and_balance_data,
     DOMAIN_FILE_MAP,
     DOMAIN_NAMES
 )
@@ -305,38 +307,7 @@ def upload_chunk():
     else:
         try:
             wb = openpyxl.load_workbook(final_path, data_only=True)
-            summary_data = []
-            if 'Summary' in wb.sheetnames:
-                sheet = wb['Summary']
-                for r in range(2, sheet.max_row + 1):
-                    name = sheet.cell(r, 2).value
-                    if name:
-                        summary_data.append({
-                            'no': sheet.cell(r, 1).value,
-                            'name': str(name),
-                            'team': sheet.cell(r, 3).value,
-                            'location': sheet.cell(r, 5).value,
-                            'working_days': sheet.cell(r, 6).value,
-                            'weekend_ot': sheet.cell(r, 7).value,
-                            'weekday_ot': sheet.cell(r, 8).value,
-                            'ph_ot': sheet.cell(r, 9).value,
-                            'total_ot': sheet.cell(r, 10).value,
-                            'leaves': sheet.cell(r, 11).value
-                        })
-
-            balance_data = []
-            bal_sheet_name = 'Balance Leave' if 'Balance Leave' in wb.sheetnames else ('Leave Balance' if 'Leave Balance' in wb.sheetnames else None)
-            if bal_sheet_name:
-                sheet = wb[bal_sheet_name]
-                for r in range(3, sheet.max_row + 1):
-                    name = sheet.cell(r, 2).value
-                    if name:
-                        balance_data.append({
-                            'name': str(name),
-                            'total_leave': sheet.cell(r, 6).value,
-                            'balance_upto': sheet.cell(r, 7).value,
-                            'balance_in_month': sheet.cell(r, 10).value
-                        })
+            summary_data, balance_data = extract_summary_and_balance_data(wb)
 
             timesheet_data = []
             if 'Timesheet' in wb.sheetnames:
@@ -357,13 +328,31 @@ def upload_chunk():
             wb.close()
             anomalies = audit_timesheet_data(summary_data, balance_data, timesheet_data, "Current")
 
+            # Generate validation checklist
+            checklist_audit = None
+            try:
+                from timesheet_validator import generate_validation_checklist_file
+                checklist_filename = f"Timesheet_Validation_Checklist_Digital Team_{file_token}.xlsx"
+                checklist_out_path = os.path.join(OUTPUT_DIR, checklist_filename)
+                _, checklist_audit = generate_validation_checklist_file(
+                    final_path,
+                    output_path=checklist_out_path,
+                    filename=filename,
+                    domain_name="Digital Team"
+                )
+                download_target_name = f"Timesheet_Validation_Checklist_Digital Team_{filename}"
+                checklist_audit['download_url'] = f"/api/download-checklist?file={urllib.parse.quote(checklist_filename)}&name={urllib.parse.quote(download_target_name)}"
+            except Exception as ex_chk:
+                print(f"Checklist generation error in upload_chunk: {ex_chk}")
+
             report = {
                 'file_token': file_token,
                 'filename': filename,
                 'summary': summary_data,
                 'balance': balance_data,
                 'timesheet_sample': timesheet_data[:50],
-                'anomalies': anomalies
+                'anomalies': anomalies,
+                'checklist': checklist_audit
             }
             return jsonify({'status': 'completed', 'reports': [report]})
         except Exception as e:
@@ -493,38 +482,7 @@ def review_timesheet():
 
     wb = openpyxl.load_workbook(temp_out, data_only=True)
     
-    summary_data = []
-    if 'Summary' in wb.sheetnames:
-        sheet = wb['Summary']
-        for r in range(2, sheet.max_row + 1):
-            name = sheet.cell(r, 2).value
-            if name:
-                summary_data.append({
-                    'no': sheet.cell(r, 1).value,
-                    'name': str(name),
-                    'team': sheet.cell(r, 3).value,
-                    'location': sheet.cell(r, 5).value,
-                    'working_days': sheet.cell(r, 6).value,
-                    'weekend_ot': sheet.cell(r, 7).value,
-                    'weekday_ot': sheet.cell(r, 8).value,
-                    'ph_ot': sheet.cell(r, 9).value,
-                    'total_ot': sheet.cell(r, 10).value,
-                    'leaves': sheet.cell(r, 11).value
-                })
-
-    balance_data = []
-    bal_sheet_name = 'Balance Leave' if 'Balance Leave' in wb.sheetnames else ('Leave Balance' if 'Leave Balance' in wb.sheetnames else None)
-    if bal_sheet_name:
-        sheet = wb[bal_sheet_name]
-        for r in range(3, sheet.max_row + 1):
-            name = sheet.cell(r, 2).value
-            if name:
-                balance_data.append({
-                    'name': str(name),
-                    'total_leave': sheet.cell(r, 6).value,
-                    'balance_upto': sheet.cell(r, 7).value,
-                    'balance_in_month': sheet.cell(r, 10).value
-                })
+    summary_data, balance_data = extract_summary_and_balance_data(wb)
 
     timesheet_data = []
     if 'Timesheet' in wb.sheetnames:
@@ -545,12 +503,31 @@ def review_timesheet():
                     'hours': sheet.cell(r, 10).value
                 })
 
+    anomalies = audit_timesheet_data(summary_data, balance_data, timesheet_data, month_str)
+
+    # Generate validation checklist
+    checklist_audit = None
+    try:
+        from timesheet_validator import generate_validation_checklist_file
+        domain_disp = DOMAIN_NAMES.get(domain_key, "Digital Team")
+        checklist_filename = f"Timesheet_Validation_Checklist_Digital Team_{domain_key}_{year}_{month:02d}.xlsx"
+        checklist_out_path = os.path.join(OUTPUT_DIR, checklist_filename)
+        _, checklist_audit = generate_validation_checklist_file(
+            temp_out,
+            output_path=checklist_out_path,
+            target_month=month_str,
+            domain_name=domain_disp,
+            filename=f"FPT_{domain_disp}_Timesheet_{month_str}.xlsx"
+        )
+        download_target_name = f"Timesheet_Validation_Checklist_Digital Team_{datetime(year, month, 1).strftime('%b%Y')}.xlsx"
+        checklist_audit['download_url'] = f"/api/download-checklist?file={urllib.parse.quote(checklist_filename)}&name={urllib.parse.quote(download_target_name)}"
+    except Exception as ex_chk:
+        print(f"Checklist generation error in review_timesheet: {ex_chk}")
+
     wb.close()
     if os.path.exists(temp_out):
         try: os.remove(temp_out)
         except Exception: pass
-
-    anomalies = audit_timesheet_data(summary_data, balance_data, timesheet_data, month_str)
 
     return jsonify({
         'domain': domain_key,
@@ -558,7 +535,8 @@ def review_timesheet():
         'summary': summary_data,
         'balance': balance_data,
         'timesheet_sample': timesheet_data[:30],
-        'anomalies': anomalies
+        'anomalies': anomalies,
+        'checklist': checklist_audit
     })
 
 @app.route('/api/ai-chat', methods=['POST'])
@@ -603,38 +581,7 @@ def review_multi_uploaded_files():
 
         try:
             wb = openpyxl.load_workbook(temp_path, data_only=True)
-            summary_data = []
-            if 'Summary' in wb.sheetnames:
-                sheet = wb['Summary']
-                for r in range(2, sheet.max_row + 1):
-                    name = sheet.cell(r, 2).value
-                    if name:
-                        summary_data.append({
-                            'no': sheet.cell(r, 1).value,
-                            'name': str(name),
-                            'team': sheet.cell(r, 3).value,
-                            'location': sheet.cell(r, 5).value,
-                            'working_days': sheet.cell(r, 6).value,
-                            'weekend_ot': sheet.cell(r, 7).value,
-                            'weekday_ot': sheet.cell(r, 8).value,
-                            'ph_ot': sheet.cell(r, 9).value,
-                            'total_ot': sheet.cell(r, 10).value,
-                            'leaves': sheet.cell(r, 11).value
-                        })
-
-            balance_data = []
-            bal_sheet_name = 'Balance Leave' if 'Balance Leave' in wb.sheetnames else ('Leave Balance' if 'Leave Balance' in wb.sheetnames else None)
-            if bal_sheet_name:
-                sheet = wb[bal_sheet_name]
-                for r in range(3, sheet.max_row + 1):
-                    name = sheet.cell(r, 2).value
-                    if name:
-                        balance_data.append({
-                            'name': str(name),
-                            'total_leave': sheet.cell(r, 6).value,
-                            'balance_upto': sheet.cell(r, 7).value,
-                            'balance_in_month': sheet.cell(r, 10).value
-                        })
+            summary_data, balance_data = extract_summary_and_balance_data(wb)
 
             timesheet_data = []
             if 'Timesheet' in wb.sheetnames:
@@ -655,13 +602,31 @@ def review_multi_uploaded_files():
             wb.close()
             anomalies = audit_timesheet_data(summary_data, balance_data, timesheet_data, "Current")
 
+            # Generate validation checklist
+            checklist_audit = None
+            try:
+                from timesheet_validator import generate_validation_checklist_file
+                checklist_filename = f"Timesheet_Validation_Checklist_Digital Team_{file_token}.xlsx"
+                checklist_out_path = os.path.join(OUTPUT_DIR, checklist_filename)
+                _, checklist_audit = generate_validation_checklist_file(
+                    temp_path,
+                    output_path=checklist_out_path,
+                    filename=filename,
+                    domain_name="Digital Team"
+                )
+                download_target_name = f"Timesheet_Validation_Checklist_Digital Team_{filename}"
+                checklist_audit['download_url'] = f"/api/download-checklist?file={urllib.parse.quote(checklist_filename)}&name={urllib.parse.quote(download_target_name)}"
+            except Exception as ex_chk:
+                print(f"Checklist generation error in review-multi-upload: {ex_chk}")
+
             reports.append({
                 'file_token': file_token,
                 'filename': filename,
                 'summary': summary_data,
                 'balance': balance_data,
                 'timesheet_sample': timesheet_data[:50],
-                'anomalies': anomalies
+                'anomalies': anomalies,
+                'checklist': checklist_audit
             })
         except Exception as e:
             reports.append({
@@ -679,55 +644,87 @@ def apply_fixes_and_download():
     approved_files = payload.get('approved_files', [])
     
     if not approved_files:
-        return jsonify({'error': 'No approved fixes provided'}), 400
+        return jsonify({'error': 'No files provided to process'}), 400
 
     fixed_files_paths = []
 
     for item in approved_files:
-        file_token = item.get('file_token')
+        file_token = item.get('file_token') or ''
         fix_actions = item.get('fix_actions', [])
         filename = item.get('filename', 'Timesheet_Fixed.xlsx')
+        if not filename.endswith('.xlsx'):
+            filename += '.xlsx'
 
-        src_path = os.path.join(OUTPUT_DIR, f"_uploaded_{file_token}")
-        if not os.path.exists(src_path):
+        # Candidate paths to locate original uploaded or reviewed timesheet
+        candidates = [
+            os.path.join(OUTPUT_DIR, f"_uploaded_{file_token}"),
+            os.path.join(OUTPUT_DIR, file_token),
+            os.path.join(OUTPUT_DIR, filename),
+            os.path.join(OUTPUT_DIR, f"_uploaded_{filename}"),
+            os.path.join(OUTPUT_DIR, f"_temp_review_{filename}"),
+            os.path.join(TEMPLATE_DIR, filename)
+        ]
+        
+        src_path = None
+        for cand in candidates:
+            if cand and os.path.exists(cand) and os.path.isfile(cand):
+                src_path = cand
+                break
+
+        # Fallback to wildcard search in OUTPUT_DIR
+        if not src_path:
+            matches = glob.glob(os.path.join(OUTPUT_DIR, f"*{filename}"))
+            if matches:
+                src_path = sorted(matches, key=os.path.getmtime, reverse=True)[0]
+
+        if not src_path or not os.path.exists(src_path):
+            print(f"Warning: could not locate source file for token: {file_token}, filename: {filename}")
             continue
 
         try:
             wb = openpyxl.load_workbook(src_path)
-            apply_fixes_to_workbook(wb, fix_actions)
+            if fix_actions:
+                apply_fixes_to_workbook(wb, fix_actions)
             trim_and_optimize_workbook(wb)
             
-            out_filename = f"Fixed_{filename}"
-            out_path = os.path.join(OUTPUT_DIR, f"_result_{out_filename}")
+            clean_name = filename if filename.startswith("Fixed_") else f"Fixed_{filename}"
+            out_path = os.path.join(OUTPUT_DIR, clean_name)
             wb.save(out_path)
             wb.close()
 
-            fixed_files_paths.append((out_filename, out_path))
+            fixed_files_paths.append((clean_name, out_path))
         except Exception as e:
-            print(f"Error applying fixes to {file_token}: {str(e)}")
+            print(f"Error applying fixes to {file_token} ({filename}): {str(e)}")
 
     if not fixed_files_paths:
-        return jsonify({'error': 'Failed to process any fixed files'}), 500
+        return jsonify({'error': 'Không tìm thấy tệp nguồn hoặc không thể xử lý tệp'}), 404
 
-    # Clean temporary source files
-    for item in approved_files:
-        file_token = item.get('file_token')
-        src_path = os.path.join(OUTPUT_DIR, f"_uploaded_{file_token}")
-        if os.path.exists(src_path):
-            try: os.remove(src_path)
-            except Exception: pass
+    # If multiple files, create a zip archive for reliable 1-click download
+    if len(fixed_files_paths) > 1:
+        zip_filename = f"Fixed_Timesheets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        zip_filepath = os.path.join(OUTPUT_DIR, zip_filename)
+        with zipfile.ZipFile(zip_filepath, 'w') as zf:
+            for out_fname, out_fpath in fixed_files_paths:
+                zf.write(out_fpath, arcname=out_fname)
 
-    files_list = []
-    for out_filename, out_path in fixed_files_paths:
-        files_list.append({
-            'filename': out_filename,
-            'download_url': f"/api/download-generated-file?filename={out_filename}"
+        return jsonify({
+            'status': 'success',
+            'is_zip': True,
+            'files': [{
+                'filename': zip_filename,
+                'download_url': f"/api/download-generated-file?filename={urllib.parse.quote(zip_filename)}"
+            }]
         })
 
+    # Single file direct download
+    single_name, single_path = fixed_files_paths[0]
     return jsonify({
         'status': 'success',
-        'count': len(files_list),
-        'files': files_list
+        'is_zip': False,
+        'files': [{
+            'filename': single_name,
+            'download_url': f"/api/download-generated-file?filename={urllib.parse.quote(single_name)}"
+        }]
     })
 
 @app.route('/api/download-generated-file', methods=['GET'])
@@ -736,16 +733,69 @@ def download_generated_file():
     if not filename:
         return jsonify({'error': 'Missing filename'}), 400
 
-    filename = secure_filename(filename)
-    filepath = os.path.join(OUTPUT_DIR, filename)
+    clean_fn = os.path.basename(filename)
+    filepath = os.path.join(OUTPUT_DIR, clean_fn)
+    
+    if not os.path.exists(filepath):
+        filepath_res = os.path.join(OUTPUT_DIR, f"_result_{clean_fn}")
+        if os.path.exists(filepath_res):
+            filepath = filepath_res
 
     if not os.path.exists(filepath):
-        return jsonify({'error': 'File not found'}), 404
+        sec_fn = secure_filename(clean_fn)
+        filepath_sec = os.path.join(OUTPUT_DIR, sec_fn)
+        if os.path.exists(filepath_sec):
+            filepath = filepath_sec
 
-    return send_file(
+    if not os.path.exists(filepath):
+        # Wildcard search in OUTPUT_DIR
+        matches = glob.glob(os.path.join(OUTPUT_DIR, f"*{clean_fn}*"))
+        if matches:
+            filepath = sorted(matches, key=os.path.getmtime, reverse=True)[0]
+
+    if not os.path.exists(filepath):
+        return jsonify({'error': f'File not found: {clean_fn}'}), 404
+
+    mimetype = 'application/zip' if clean_fn.endswith('.zip') else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+    response = send_file(
         filepath,
         as_attachment=True,
-        download_name=filename,
+        download_name=clean_fn,
+        mimetype=mimetype
+    )
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response
+
+@app.route('/api/download-checklist', methods=['GET'])
+def download_checklist():
+    file_key = request.args.get('file', '')
+    custom_name = request.args.get('name') or "Timesheet_Validation_Checklist_Digital Team_Sep2026.xlsx"
+    if not file_key:
+        return jsonify({'error': 'Missing file parameter'}), 400
+    
+    clean_file_key = os.path.basename(file_key)
+    file_path = os.path.join(OUTPUT_DIR, clean_file_key)
+    if not os.path.exists(file_path):
+        sec_file_key = secure_filename(clean_file_key)
+        file_path = os.path.join(OUTPUT_DIR, sec_file_key)
+
+    if not os.path.exists(file_path):
+        matches = glob.glob(os.path.join(OUTPUT_DIR, f"*{clean_file_key}*"))
+        if matches:
+            file_path = sorted(matches, key=os.path.getmtime, reverse=True)[0]
+
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'Checklist file not found'}), 404
+
+    download_disp_name = os.path.basename(custom_name)
+    if not download_disp_name.endswith('.xlsx'):
+        download_disp_name += '.xlsx'
+
+    return send_file(
+        file_path,
+        as_attachment=True,
+        download_name=download_disp_name,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 

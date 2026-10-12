@@ -298,6 +298,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (aiInput) {
             aiInput.placeholder = lang === 'en' ? "Type request or paste comment notes..." : "Nhập yêu cầu hoặc dán ghi chú...";
         }
+
+        if (state.selectedMonth) {
+            updatePreview();
+        }
+        if (typeof updateIndivPreview === 'function') {
+            updateIndivPreview();
+        }
     }
 
     if (btnToggleTheme) {
@@ -975,25 +982,44 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     function renderDaysGrid(days) {
         if (!days || !days.length) return;
 
-        daysGrid.innerHTML = days.map(d => {
-            let statusText = 'Làm việc (8h)';
+        const isEn = currentLang === 'en';
+        const [y, m] = days[0].date.split('-').map(Number);
+        const firstDayObj = new Date(y, m - 1, 1);
+        const firstWeekday = (firstDayObj.getDay() + 6) % 7; // Mon=0, Tue=1 ... Sun=6
+
+        let html = '';
+
+        for (let i = 0; i < firstWeekday; i++) {
+            html += `<div class="day-cell empty-day"></div>`;
+        }
+
+        days.forEach(d => {
+            let statusText = isEn ? 'Working (8h)' : 'Làm việc (8h)';
             let cellClass = 'working';
 
             if (d.is_weekend) {
-                statusText = 'Cuối tuần (Bỏ qua)';
+                statusText = isEn ? 'Weekend (Skipped)' : 'Cuối tuần (Bỏ qua)';
                 cellClass = 'weekend';
             } else if (d.is_holiday) {
-                statusText = d.holiday_name ? `🇸🇬 ${d.holiday_name} (0h)` : 'Public Holiday (0h)';
+                statusText = d.holiday_name ? `🇸🇬 ${d.holiday_name} (0h)` : (isEn ? 'Public Holiday (0h)' : 'Ngày lễ (0h)');
                 cellClass = 'holiday';
             }
 
-            return `
+            html += `
                 <div class="day-cell ${cellClass}">
-                    <div class="day-date">${d.day_num} ${d.weekday_name}</div>
+                    <div class="day-date">${d.day_num}</div>
                     <div class="day-status">${statusText}</div>
                 </div>
             `;
-        }).join('');
+        });
+
+        const totalCells = firstWeekday + days.length;
+        const trailingPadding = (7 - (totalCells % 7)) % 7;
+        for (let i = 0; i < trailingPadding; i++) {
+            html += `<div class="day-cell empty-day"></div>`;
+        }
+
+        daysGrid.innerHTML = html;
     }
 
     // Generate & Download Excel Timesheets
@@ -1093,7 +1119,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             if (!res.ok) throw new Error('Không thể rà soát dữ liệu');
             const data = await res.json();
 
-            renderAuditAnomalies(data.anomalies || []);
+            renderAuditAnomalies(data.anomalies || [], data.checklist);
             renderReviewBalanceTable(data.balance || []);
             reviewTablesSection.style.display = 'block';
         } catch (err) {
@@ -1101,13 +1127,34 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         }
     }
 
-    function renderAuditAnomalies(anomalies) {
+    function renderAuditAnomalies(anomalies, checklist) {
+        let chkHtml = '';
+        if (checklist) {
+            const chkClass = checklist.is_ready ? 'sg-holiday' : 'bg-danger';
+            chkHtml = `
+                <div style="background: rgba(91,155,213,0.1); border: 1px solid rgba(91,155,213,0.3); border-radius: var(--radius-sm); padding: 0.9rem 1.1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.8rem;">
+                    <div>
+                        <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">📋 Timesheet Validation Checklist (Digital Team)</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+                            Độ tuân thủ: <strong style="color: #5b9bd5;">${checklist.compliance_rate}%</strong> (${checklist.passed_count}/${checklist.total_rules} tiêu chí đạt chuẩn)
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.6rem; align-items: center;">
+                        <span class="ph-tag ${chkClass}">${checklist.is_ready ? 'Đạt chuẩn' : 'Có lỗi'}</span>
+                        <a href="${checklist.download_url}" target="_blank" class="btn btn-sm btn-primary" style="text-decoration: none;">
+                            📥 Tải File Checklist (.xlsx)
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+
         if (!anomalies.length) {
-            auditAnomaliesContainer.innerHTML = `<div class="anomaly-item success">✅ Dữ liệu Timesheet hợp lệ 100%!</div>`;
+            auditAnomaliesContainer.innerHTML = chkHtml + `<div class="anomaly-item success">✅ Dữ liệu Timesheet hợp lệ 100%!</div>`;
             return;
         }
 
-        auditAnomaliesContainer.innerHTML = anomalies.map(a => `
+        auditAnomaliesContainer.innerHTML = chkHtml + anomalies.map(a => `
             <div class="anomaly-item ${a.type}">
                 <div><strong>[${a.category}]</strong> ${a.message}</div>
                 ${a.action_hint ? `<div class="anomaly-hint">💡 Gợi ý: ${a.action_hint}</div>` : ''}
@@ -1516,25 +1563,45 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
     function renderIndivCalendar(days) {
         if (!days || !days.length || !indivDaysGrid) return;
-        indivDaysGrid.innerHTML = days.map(d => {
-            let statusText = 'Project Task (8h)';
+
+        const isEn = currentLang === 'en';
+        const [y, m] = days[0].date.split('-').map(Number);
+        const firstDayObj = new Date(y, m - 1, 1);
+        const firstWeekday = (firstDayObj.getDay() + 6) % 7; // Mon=0, Tue=1 ... Sun=6
+
+        let html = '';
+
+        for (let i = 0; i < firstWeekday; i++) {
+            html += `<div class="day-cell empty-day"></div>`;
+        }
+
+        days.forEach(d => {
+            let statusText = isEn ? 'Working (8h)' : 'Làm việc (8h)';
             let cellClass = 'working';
 
             if (d.is_weekend) {
-                statusText = 'Cuối tuần (Bỏ qua)';
+                statusText = isEn ? 'Weekend (Skipped)' : 'Cuối tuần (Bỏ qua)';
                 cellClass = 'weekend';
             } else if (d.is_holiday) {
-                statusText = d.holiday_name ? `🇸🇬 ${d.holiday_name} (0h)` : 'Public Holiday (0h)';
+                statusText = d.holiday_name ? `🇸🇬 ${d.holiday_name} (0h)` : (isEn ? 'Public Holiday (0h)' : 'Ngày lễ (0h)');
                 cellClass = 'holiday';
             }
 
-            return `
+            html += `
                 <div class="day-cell ${cellClass}">
-                    <div class="day-date">${d.day_num} ${d.weekday_name}</div>
+                    <div class="day-date">${d.day_num}</div>
                     <div class="day-status">${statusText}</div>
                 </div>
             `;
-        }).join('');
+        });
+
+        const totalCells = firstWeekday + days.length;
+        const trailingPadding = (7 - (totalCells % 7)) % 7;
+        for (let i = 0; i < trailingPadding; i++) {
+            html += `<div class="day-cell empty-day"></div>`;
+        }
+
+        indivDaysGrid.innerHTML = html;
     }
 
     if (indivDomainSelect) {
@@ -1641,6 +1708,16 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
     const autoFixActionBar = document.getElementById('autoFixActionBar');
     const btnApplyApprovedFixes = document.getElementById('btnApplyApprovedFixes');
+    const btnDownloadChecklistAction = document.getElementById('btnDownloadChecklistAction');
+
+    const checklistSummaryCard = document.getElementById('checklistSummaryCard');
+    const checklistBadgeStatus = document.getElementById('checklistBadgeStatus');
+    const btnDownloadChecklistHeader = document.getElementById('btnDownloadChecklistHeader');
+    const checklistPassedCount = document.getElementById('checklistPassedCount');
+    const checklistWarnCount = document.getElementById('checklistWarnCount');
+    const checklistFailedCount = document.getElementById('checklistFailedCount');
+    const checklistRate = document.getElementById('checklistRate');
+    const checklistDetailsTableBody = document.getElementById('checklistDetailsTableBody');
 
     let currentReviewReports = [];
     let activeFileIdx = 0;
@@ -1651,6 +1728,22 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     if (reviewUploadFileInput) reviewUploadFileInput.addEventListener('change', handleMultiReviewFileUpload);
     if (btnApplyApprovedFixes) btnApplyApprovedFixes.addEventListener('click', handleApplyApprovedFixes);
     if (btnToggleSelectAllFixes) btnToggleSelectAllFixes.addEventListener('click', toggleSelectAllFixes);
+
+    function handleChecklistDownloadClick(e) {
+        const link = e.currentTarget;
+        const href = link.getAttribute('href');
+        if (!href || href === '#' || href === '') {
+            e.preventDefault();
+            const rep = currentReviewReports[activeFileIdx];
+            if (rep && rep.checklist && rep.checklist.download_url) {
+                window.open(rep.checklist.download_url, '_blank');
+            } else {
+                showNotification('File Checklist kiểm toán đang được chuẩn bị hoặc chưa có sẵn.', 'warning');
+            }
+        }
+    }
+    if (btnDownloadChecklistAction) btnDownloadChecklistAction.addEventListener('click', handleChecklistDownloadClick);
+    if (btnDownloadChecklistHeader) btnDownloadChecklistHeader.addEventListener('click', handleChecklistDownloadClick);
 
     sheetTabBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -1695,6 +1788,13 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             return;
         }
 
+        allReports.forEach(rep => {
+            (rep.anomalies || []).forEach(a => {
+                if (a.fix_action && a.is_approved === undefined) {
+                    a.is_approved = true;
+                }
+            });
+        });
         currentReviewReports = allReports;
         activeFileIdx = 0;
 
@@ -1771,11 +1871,83 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         }
 
         activeFileWorkspace.style.display = 'block';
+        renderChecklistSummaryCard(report);
         renderFileDiffsList(report);
         renderLiveSheetTable();
 
         const hasAnyFixable = currentReviewReports.some(r => (r.anomalies || []).some(a => a.fix_action));
         autoFixActionBar.style.display = hasAnyFixable ? 'block' : 'none';
+    }
+
+    function renderChecklistSummaryCard(report) {
+        if (!report || !report.checklist) {
+            if (checklistSummaryCard) checklistSummaryCard.style.display = 'none';
+            if (btnDownloadChecklistAction) btnDownloadChecklistAction.style.display = 'none';
+            return;
+        }
+
+        const chk = report.checklist;
+        if (checklistSummaryCard) checklistSummaryCard.style.display = 'block';
+
+        if (btnDownloadChecklistAction) {
+            btnDownloadChecklistAction.style.display = 'inline-flex';
+            btnDownloadChecklistAction.href = chk.download_url || '#';
+            btnDownloadChecklistAction.setAttribute('download', `Timesheet_Validation_Checklist_Digital Team_${report.filename || 'Sep2026.xlsx'}`);
+        }
+
+        if (btnDownloadChecklistHeader) {
+            btnDownloadChecklistHeader.href = chk.download_url || '#';
+            btnDownloadChecklistHeader.setAttribute('download', `Timesheet_Validation_Checklist_Digital Team_${report.filename || 'Sep2026.xlsx'}`);
+        }
+
+        if (checklistPassedCount) checklistPassedCount.textContent = `${chk.passed_count || 0} / ${chk.total_rules || 27}`;
+        if (checklistWarnCount) checklistWarnCount.textContent = chk.warning_count || 0;
+        if (checklistFailedCount) checklistFailedCount.textContent = chk.failed_count || 0;
+        if (checklistRate) checklistRate.textContent = `${chk.compliance_rate || 0}%`;
+
+        if (checklistBadgeStatus) {
+            if (chk.is_ready) {
+                checklistBadgeStatus.className = 'ph-tag sg-holiday';
+                checklistBadgeStatus.textContent = '✅ Sẵn sàng gửi khách hàng (100% Đạt)';
+            } else if (chk.failed_count > 0) {
+                checklistBadgeStatus.className = 'ph-tag bg-danger';
+                checklistBadgeStatus.textContent = `❌ Chưa đạt chuẩn (${chk.failed_count} lỗi cần sửa)`;
+            } else {
+                checklistBadgeStatus.className = 'ph-tag';
+                checklistBadgeStatus.style.background = 'rgba(255,170,0,0.2)';
+                checklistBadgeStatus.style.color = '#ffaa00';
+                checklistBadgeStatus.textContent = `⚠️ Cảnh báo (${chk.warning_count} cần xác nhận)`;
+            }
+        }
+
+        if (checklistDetailsTableBody && chk.results) {
+            checklistDetailsTableBody.innerHTML = chk.results.map(r => {
+                let badgeClass = 'sg-holiday';
+                if (r.status === 'Không đạt') badgeClass = 'bg-danger';
+                else if (r.status === 'Cảnh báo') badgeClass = 'warning';
+                else if (r.status === 'Không áp dụng') badgeClass = '';
+
+                return `
+                    <tr>
+                        <td style="text-align: center; font-weight: 700; color: var(--text-muted);">${r.stt}</td>
+                        <td><span style="font-weight: 600; color: #5b9bd5;">${r.group}</span></td>
+                        <td>
+                            <strong style="color: #fff;">${r.item}</strong>
+                            <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">${r.rule}</div>
+                        </td>
+                        <td style="text-align: center;">
+                            <span class="ph-tag ${badgeClass}" style="font-size: 0.8rem; padding: 0.2rem 0.5rem;">${r.status}</span>
+                        </td>
+                        <td style="font-family: monospace; font-size: 0.82rem; color: #a5b4fc;">
+                            ${r.reference || '--'}
+                        </td>
+                        <td style="color: #cbd5e1; font-size: 0.82rem;">
+                            ${r.note || ''}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
     }
 
     function renderFileDiffsList(report) {
@@ -1789,30 +1961,32 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
         fileDiffsListContainer.innerHTML = anomalies.map(a => {
             const isFixable = a.fix_action !== null && a.fix_action !== undefined;
+            const isChecked = a.is_approved !== undefined ? a.is_approved : true;
 
             let customControlHtml = '';
-            if (isFixable) {
+            if (isFixable && a.fix_action) {
                 const actType = a.fix_action.type;
                 if (['replace_invalid_worktype', 'fix_weekend_worktype'].includes(actType)) {
+                    const selVal = a.custom_value || a.proposed_value || 'Project Task';
                     customControlHtml = `
                         <div style="margin-top:0.5rem; display:flex; align-items:center; gap:0.5rem; background:rgba(0,0,0,0.25); padding:0.4rem 0.6rem; border-radius:var(--radius-sm); width:fit-content;">
                             <small style="color:var(--text-muted); font-weight:600;">✏️ Sửa thành loại:</small>
-                            <select class="form-control custom-fix-input" data-fix-id="${a.id}" style="padding:0.2rem 0.5rem; font-size:0.8rem; height:auto; width:auto; display:inline-block; border-color:rgba(16,206,103,0.4);">
-                                <option value="Project Task" ${a.proposed_value === 'Project Task' ? 'selected' : ''}>Project Task</option>
-                                <option value="Weekend support" ${a.proposed_value === 'Weekend support' ? 'selected' : ''}>Weekend support</option>
-                                <option value="Weekday support">Weekday support</option>
-                                <option value="PH Support">PH Support</option>
-                                <option value="Leave">Leave</option>
-                                <option value="Public Holiday">Public Holiday</option>
+                            <select class="form-control custom-fix-input" data-fix-id="${a.id}" data-file-idx="${activeFileIdx}" style="padding:0.2rem 0.5rem; font-size:0.8rem; height:auto; width:auto; display:inline-block; border-color:rgba(16,206,103,0.4);">
+                                <option value="Project Task" ${selVal === 'Project Task' ? 'selected' : ''}>Project Task</option>
+                                <option value="Weekend support" ${selVal === 'Weekend support' ? 'selected' : ''}>Weekend support</option>
+                                <option value="Weekday support" ${selVal === 'Weekday support' ? 'selected' : ''}>Weekday support</option>
+                                <option value="PH Support" ${selVal === 'PH Support' ? 'selected' : ''}>PH Support</option>
+                                <option value="Leave" ${selVal === 'Leave' ? 'selected' : ''}>Leave</option>
+                                <option value="Public Holiday" ${selVal === 'Public Holiday' ? 'selected' : ''}>Public Holiday</option>
                             </select>
                         </div>
                     `;
                 } else if (['set_ph_hours_zero', 'set_leave_hours_zero', 'set_project_task_hours_8', 'set_ot_hours_default'].includes(actType)) {
-                    const proposedHrs = parseFloat(a.proposed_value) || 0;
+                    const proposedHrs = a.custom_value !== undefined ? parseFloat(a.custom_value) : (parseFloat(a.proposed_value) || 0);
                     customControlHtml = `
                         <div style="margin-top:0.5rem; display:flex; align-items:center; gap:0.5rem; background:rgba(0,0,0,0.25); padding:0.4rem 0.6rem; border-radius:var(--radius-sm); width:fit-content;">
                             <small style="color:var(--text-muted); font-weight:600;">✏️ Sửa thành số giờ:</small>
-                            <select class="form-control custom-fix-input" data-fix-id="${a.id}" style="padding:0.2rem 0.5rem; font-size:0.8rem; height:auto; width:auto; display:inline-block; border-color:rgba(16,206,103,0.4);">
+                            <select class="form-control custom-fix-input" data-fix-id="${a.id}" data-file-idx="${activeFileIdx}" style="padding:0.2rem 0.5rem; font-size:0.8rem; height:auto; width:auto; display:inline-block; border-color:rgba(16,206,103,0.4);">
                                 <option value="0" ${proposedHrs === 0 ? 'selected' : ''}>0h (Chuẩn PH/Leave)</option>
                                 <option value="8" ${proposedHrs === 8 ? 'selected' : ''}>8h (Chuẩn Project Task)</option>
                                 <option value="4" ${proposedHrs === 4 ? 'selected' : ''}>4h (Nửa ngày / OT)</option>
@@ -1822,11 +1996,11 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
                         </div>
                     `;
                 } else if (actType === 'adjust_leave_balance') {
-                    const proposedUpto = parseFloat(a.proposed_value) || 10;
+                    const proposedUpto = a.custom_value !== undefined ? parseFloat(a.custom_value) : (parseFloat(a.proposed_value) || 10);
                     customControlHtml = `
                         <div style="margin-top:0.5rem; display:flex; align-items:center; gap:0.5rem; background:rgba(0,0,0,0.25); padding:0.4rem 0.6rem; border-radius:var(--radius-sm); width:fit-content;">
                             <small style="color:var(--text-muted); font-weight:600;">✏️ Sửa Balance Upto thành:</small>
-                            <input type="number" step="0.5" class="form-control custom-fix-input" data-fix-id="${a.id}" value="${proposedUpto}" style="padding:0.2rem 0.5rem; font-size:0.8rem; height:auto; width:80px; display:inline-block; border-color:rgba(16,206,103,0.4);">
+                            <input type="number" step="0.5" class="form-control custom-fix-input" data-fix-id="${a.id}" data-file-idx="${activeFileIdx}" value="${proposedUpto}" style="padding:0.2rem 0.5rem; font-size:0.8rem; height:auto; width:80px; display:inline-block; border-color:rgba(16,206,103,0.4);">
                         </div>
                     `;
                 }
@@ -1855,7 +2029,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
 
                         ${isFixable ? `
                             <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; background:rgba(16,206,103,0.15); border:1px solid rgba(16,206,103,0.4); padding:0.45rem 0.8rem; border-radius:var(--radius-sm); white-space:nowrap; font-size:0.8rem; font-weight:700; color:#fff;">
-                                <input type="checkbox" class="fix-checkbox" data-file-token="${fileToken}" data-fix-id="${a.id}" data-file-idx="${activeFileIdx}" ${allFixesSelected ? 'checked' : ''}>
+                                <input type="checkbox" class="fix-checkbox" data-file-token="${fileToken}" data-fix-id="${a.id}" data-file-idx="${activeFileIdx}" ${isChecked ? 'checked' : ''}>
                                 <span>Approve Fix</span>
                             </label>
                         ` : ''}
@@ -1863,12 +2037,45 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
                 </div>
             `;
         }).join('');
+
+        // Attach listeners for live changes
+        fileDiffsListContainer.querySelectorAll('.fix-checkbox').forEach(chk => {
+            chk.addEventListener('change', (e) => {
+                const fixId = e.target.getAttribute('data-fix-id');
+                const fileIdx = parseInt(e.target.getAttribute('data-file-idx'));
+                const rep = currentReviewReports[fileIdx];
+                if (rep) {
+                    const anom = (rep.anomalies || []).find(x => x.id === fixId);
+                    if (anom) anom.is_approved = e.target.checked;
+                }
+            });
+        });
+
+        fileDiffsListContainer.querySelectorAll('.custom-fix-input').forEach(inp => {
+            const updateVal = (e) => {
+                const fixId = e.target.getAttribute('data-fix-id');
+                const fileIdx = parseInt(e.target.getAttribute('data-file-idx'));
+                const rep = currentReviewReports[fileIdx];
+                if (rep) {
+                    const anom = (rep.anomalies || []).find(x => x.id === fixId);
+                    if (anom) anom.custom_value = e.target.value;
+                }
+            };
+            inp.addEventListener('input', updateVal);
+            inp.addEventListener('change', updateVal);
+        });
     }
 
     function toggleSelectAllFixes() {
         allFixesSelected = !allFixesSelected;
         btnToggleSelectAllFixes.textContent = allFixesSelected ? 'Bỏ Tích Tất Cả' : 'Tích Tất Cả Fixes';
-        document.querySelectorAll('.fix-checkbox').forEach(chk => chk.checked = allFixesSelected);
+        const rep = currentReviewReports[activeFileIdx];
+        if (rep && rep.anomalies) {
+            rep.anomalies.forEach(a => {
+                if (a.fix_action) a.is_approved = allFixesSelected;
+            });
+        }
+        fileDiffsListContainer.querySelectorAll('.fix-checkbox').forEach(chk => chk.checked = allFixesSelected);
     }
 
     function renderLiveSheetTable() {
@@ -1999,50 +2206,55 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     }
 
     async function handleApplyApprovedFixes() {
-        if (!currentReviewReports.length) return;
-
-        const approvedFilesMap = {};
-
-        document.querySelectorAll('.fix-checkbox:checked').forEach(chk => {
-            const fileToken = chk.getAttribute('data-file-token');
-            const fileIdx = parseInt(chk.getAttribute('data-file-idx'));
-            const fixId = chk.getAttribute('data-fix-id');
-
-            const report = currentReviewReports[fileIdx];
-            if (!report) return;
-
-            const anomaly = (report.anomalies || []).find(a => a.id === fixId);
-            if (!anomaly || !anomaly.fix_action) return;
-
-            // Check if user edited the proposed fix value!
-            const customInput = document.querySelector(`.custom-fix-input[data-fix-id="${fixId}"]`);
-            let customVal = null;
-            if (customInput) {
-                customVal = customInput.value;
-            }
-
-            const fixActionToApply = { ...anomaly.fix_action };
-            if (customVal !== null) {
-                fixActionToApply.custom_value = customVal;
-            }
-
-            if (!approvedFilesMap[fileToken]) {
-                approvedFilesMap[fileToken] = {
-                    file_token: fileToken,
-                    filename: report.filename,
-                    fix_actions: []
-                };
-            }
-            approvedFilesMap[fileToken].fix_actions.push(anomaly.fix_action);
-        });
-
-        const approved_files = Object.values(approvedFilesMap);
-        if (approved_files.length === 0) {
-            showNotification('Vui lòng tích chọn ít nhất 1 gợi ý sửa đổi (Approve Fix) để áp dụng.', 'warning');
+        if (!currentReviewReports || !currentReviewReports.length) {
+            showNotification('Vui lòng tải lên file Timesheet để rà soát trước.', 'warning');
             return;
         }
 
-        showLoading('⚡ Đang tự động sửa lỗi theo phê duyệt và khởi tạo file sạch...');
+        // Sync any active inputs currently visible in DOM
+        document.querySelectorAll('.fix-checkbox').forEach(chk => {
+            const fixId = chk.getAttribute('data-fix-id');
+            const fileIdx = parseInt(chk.getAttribute('data-file-idx'));
+            const rep = currentReviewReports[fileIdx];
+            if (rep) {
+                const anom = (rep.anomalies || []).find(a => a.id === fixId);
+                if (anom) anom.is_approved = chk.checked;
+            }
+        });
+        document.querySelectorAll('.custom-fix-input').forEach(inp => {
+            const fixId = inp.getAttribute('data-fix-id');
+            const fileIdx = parseInt(inp.getAttribute('data-file-idx'));
+            const rep = currentReviewReports[fileIdx];
+            if (rep) {
+                const anom = (rep.anomalies || []).find(a => a.id === fixId);
+                if (anom) anom.custom_value = inp.value;
+            }
+        });
+
+        // Collect all reviewed files
+        const approved_files = currentReviewReports.map(rep => {
+            const token = rep.file_token || rep.filename;
+            const fixesToApply = [];
+
+            (rep.anomalies || []).forEach(a => {
+                // Apply if fixable and marked approved (default is true)
+                if (a.fix_action && a.is_approved !== false) {
+                    const act = { ...a.fix_action };
+                    if (a.custom_value !== undefined && a.custom_value !== null) {
+                        act.custom_value = a.custom_value;
+                    }
+                    fixesToApply.push(act);
+                }
+            });
+
+            return {
+                file_token: token,
+                filename: rep.filename,
+                fix_actions: fixesToApply
+            };
+        });
+
+        showLoading('⚡ Đang tự động sửa lỗi và xuất các file sạch 100%...');
 
         try {
             const res = await fetch('/api/apply-fixes-download', {
@@ -2052,23 +2264,40 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             });
 
             const resData = await res.json();
+            if (!res.ok || resData.error) {
+                throw new Error(resData.error || `HTTP ${res.status}`);
+            }
+
             if (resData.files && resData.files.length > 0) {
-                for (let i = 0; i < resData.files.length; i++) {
-                    const fInfo = resData.files[i];
-                    const a = document.createElement('a');
-                    a.href = fInfo.download_url;
-                    a.download = fInfo.filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    if (i < resData.files.length - 1) {
-                        await new Promise(r => setTimeout(r, 250));
-                    }
+                resData.files.forEach((fInfo, idx) => {
+                    setTimeout(() => {
+                        const link = document.createElement('a');
+                        link.style.display = 'none';
+                        link.href = fInfo.download_url;
+                        link.setAttribute('download', fInfo.filename || '');
+                        document.body.appendChild(link);
+                        link.click();
+                        setTimeout(() => {
+                            if (link.parentNode) link.parentNode.removeChild(link);
+                        }, 2000);
+                    }, idx * 300);
+                });
+
+                const firstFile = resData.files[0];
+                const msg = `✅ Đã sửa lỗi & tải xuống file sạch thành công: <strong>${firstFile.filename}</strong> <a href="${firstFile.download_url}" target="_blank" style="color:#00ffcc; text-decoration:underline; margin-left:8px; font-weight:bold;">[Bấm để tải lại]</a>`;
+                showNotification(msg, 'success');
+                if (reviewUploadStatusText) {
+                    reviewUploadStatusText.innerHTML = `✅ Đã sửa lỗi & tải xuống file sạch thành công!`;
                 }
-                reviewUploadStatusText.textContent = `✅ Đã sửa lỗi & tải xuống file sạch thành công!`;
+            } else {
+                throw new Error('Máy chủ không trả về đường dẫn tải file.');
             }
         } catch (err) {
-            showNotification(`Lỗi: ${err.message}`, 'danger');
+            console.error('Error applying fixes:', err);
+            showNotification(`Lỗi xuất file: ${err.message}`, 'danger');
+            if (reviewUploadStatusText) {
+                reviewUploadStatusText.textContent = `❌ Lỗi: ${err.message}`;
+            }
         } finally {
             hideLoading();
         }
