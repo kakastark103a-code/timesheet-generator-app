@@ -7,7 +7,7 @@ def audit_timesheet_data(summary_data, balance_data, timesheet_data, month_str):
     """
     Performs comprehensive row-level audit of timesheet data according to Singapore Client Rules:
     1. Public Holiday (PH) => Actual Time MUST = 0
-    2. Leave => Actual Time MUST = 0
+    2. Leave => no Actual Time restriction (not required to be 0)
     3. Project Task => Actual Time MUST = 8 (or 2/4/6), CANNOT = 0
     4. Work Item Type => Must be in accepted list (No Miscellaneous or invalid types)
     5. Weekend dates => Must be 'Weekend support' or 'PH Support'
@@ -97,25 +97,7 @@ def audit_timesheet_data(summary_data, balance_data, timesheet_data, month_str):
             })
             idx += 1
 
-        # Rule 3: Leave Actual Time MUST BE 0
-        if wtype_lower == 'leave' and isinstance(hours, (int, float)) and hours > 0:
-            anomalies.append({
-                'id': f"fix_{idx}",
-                'type': 'warning',
-                'category': 'Leave Hours Error',
-                'sheet': 'Timesheet',
-                'row_index': r_idx,
-                'member': name,
-                'date': dt_val,
-                'target_field': 'Actual Time (Cột J)',
-                'current_value': f"{hours}h",
-                'proposed_value': '0h',
-                'message': f"Dòng {r_idx} ({name} - {dt_val}): loại 'Leave' nhưng có Actual Time = <strong>{hours}h</strong> (Quy tắc Client: Leave Actual Time phải = 0).",
-                'suggested_fix': f"Đổi số giờ làm: <code>{hours}h</code> ➔ <code>0h</code>",
-                'action_hint': "Chuyển Actual Time của Leave về 0",
-                'fix_action': {'type': 'set_leave_hours_zero', 'row_index': r_idx}
-            })
-            idx += 1
+        # Rule 3 (removed): Leave rows are NOT required to have Actual Time = 0.
 
         # Rule 4: Project Task Actual Time CANNOT be 0
         if wtype_lower == 'project task' and isinstance(hours, (int, float)) and hours == 0:

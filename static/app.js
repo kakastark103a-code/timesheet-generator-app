@@ -1134,7 +1134,7 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
             chkHtml = `
                 <div style="background: rgba(91,155,213,0.1); border: 1px solid rgba(91,155,213,0.3); border-radius: var(--radius-sm); padding: 0.9rem 1.1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.8rem;">
                     <div>
-                        <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">📋 Timesheet Validation Checklist (Digital Team)</div>
+                        <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">📋 Timesheet Validation Checklist</div>
                         <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
                             Độ tuân thủ: <strong style="color: #5b9bd5;">${checklist.compliance_rate}%</strong> (${checklist.passed_count}/${checklist.total_rules} tiêu chí đạt chuẩn)
                         </div>
@@ -1729,6 +1729,15 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
     if (btnApplyApprovedFixes) btnApplyApprovedFixes.addEventListener('click', handleApplyApprovedFixes);
     if (btnToggleSelectAllFixes) btnToggleSelectAllFixes.addEventListener('click', toggleSelectAllFixes);
 
+    function getChecklistDownloadName(chk) {
+        try {
+            const u = new URL(chk.download_url, window.location.origin);
+            return u.searchParams.get('name') || 'Timesheet_Validation_Checklist.xlsx';
+        } catch (e) {
+            return 'Timesheet_Validation_Checklist.xlsx';
+        }
+    }
+
     function handleChecklistDownloadClick(e) {
         const link = e.currentTarget;
         const href = link.getAttribute('href');
@@ -1892,12 +1901,12 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
         if (btnDownloadChecklistAction) {
             btnDownloadChecklistAction.style.display = 'inline-flex';
             btnDownloadChecklistAction.href = chk.download_url || '#';
-            btnDownloadChecklistAction.setAttribute('download', `Timesheet_Validation_Checklist_Digital Team_${report.filename || 'Sep2026.xlsx'}`);
+            btnDownloadChecklistAction.setAttribute('download', getChecklistDownloadName(chk));
         }
 
         if (btnDownloadChecklistHeader) {
             btnDownloadChecklistHeader.href = chk.download_url || '#';
-            btnDownloadChecklistHeader.setAttribute('download', `Timesheet_Validation_Checklist_Digital Team_${report.filename || 'Sep2026.xlsx'}`);
+            btnDownloadChecklistHeader.setAttribute('download', getChecklistDownloadName(chk));
         }
 
         if (checklistPassedCount) checklistPassedCount.textContent = `${chk.passed_count || 0} / ${chk.total_rules || 27}`;
@@ -2106,8 +2115,8 @@ Do Phu Tung\tTungDP2\tFlutter\tCần update Leave Balance upto Apr 26 về 12`;
                 // 2. Public Holiday Hours Error (Rule: PH Actual Time MUST = 0)
                 const isPHErr = wtype_lower === 'public holiday' && hours !== 0;
 
-                // 3. Leave Hours Error (Rule: Leave Actual Time MUST = 0)
-                const isLeaveErr = wtype_lower === 'leave' && hours > 0;
+                // 3. Leave rows: Actual Time is NOT required to be 0 (no check)
+                const isLeaveErr = false;
 
                 // 4. Project Task Hours Error (Rule: Project Task Actual Time MUST = 8 or 2/4/6, CANNOT = 0)
                 const isTaskErr = wtype_lower === 'project task' && hours === 0;

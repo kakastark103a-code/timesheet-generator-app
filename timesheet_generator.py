@@ -979,7 +979,7 @@ def format_sheet_dimensions_and_alignment(ws, sheet_name='Timesheet', resources_
         for k in keys_to_delete:
             del ws.column_dimensions[k]
 
-def update_summary_sheet_dynamically(sheet_sum, resources, year=None, month=None, parsed_overrides=None, domain_key=None, wb=None):
+def update_summary_sheet_dynamically(sheet_sum, resources, year=None, month=None, parsed_overrides=None, domain_key=None, wb=None, ph_dates=None):
     """
     Dynamically maps Row 1 & Row 2 header titles to exact formulas and column positions in Summary sheet.
     Supports Sep2026 format (Row 1 Month, Row 2 Headers, 18 columns, Table Summary, Time sheet formulas)
@@ -1068,6 +1068,30 @@ def update_summary_sheet_dynamically(sheet_sum, resources, year=None, month=None
                 sheet_time.cell(1, col_idx).value = datetime(year, m, 1)
                 last_day = calendar.monthrange(year, m)[1]
                 sheet_time.cell(2, col_idx).value = datetime(year, m, last_day)
+
+            # Rebuild holiday list (rows 4-6) used by =NETWORKDAYS(D1,D2,D4:D6) so that
+            # 'Calendar WD per Month' is correct for any year / custom public holidays.
+            holidays_by_month = {m: set() for m in range(1, 13)}
+            try:
+                for d_str in get_singapore_holidays(year).keys():
+                    d_obj = datetime.strptime(d_str, "%Y-%m-%d").date()
+                    if d_obj.weekday() < 5:
+                        holidays_by_month[d_obj.month].add(d_obj)
+            except Exception:
+                pass
+            for d_obj in (ph_dates or []):
+                if d_obj.year == year and d_obj.weekday() < 5:
+                    holidays_by_month[d_obj.month].add(d_obj)
+            for m in range(1, 13):
+                col_idx = m + 3
+                days = sorted(holidays_by_month[m])[:3]
+                for i in range(3):
+                    cell = sheet_time.cell(4 + i, col_idx)
+                    if i < len(days):
+                        cell.value = datetime(days[i].year, days[i].month, days[i].day)
+                        cell.number_format = 'd-mmm-yy'
+                    else:
+                        cell.value = None
 
         return True
 
@@ -1401,10 +1425,15 @@ def generate_domain_timesheet(template_path: str, year: int, month: int, output_
                     surf_id = "Leave"
                     proj_val = leave_entry.get('project', '')
                     task_val = leave_entry.get('task', 'Annual Leave')
-                    hours_val = 0  # Client Rule: Leave Actual Time MUST BE 0
+                    # Summary 'Leave occur' = SUMIFS(Leave hours)/8, so a full-day Leave must carry 8h
+                    # (a Leave row with 0h would never be counted / deducted from leave balance).
+                    work_hrs = leave_entry.get('work_hours')
+                    if isinstance(work_hrs, (int, float)) and 0 < work_hrs < 8:
+                        hours_val = 8 - work_hrs
+                    else:
+                        hours_val = 8
 
                     # If partial day leave (e.g. 4h work + leave), write Project Task line first
-                    work_hrs = leave_entry.get('work_hours')
                     if isinstance(work_hrs, (int, float)) and work_hrs > 0:
                         write_ts_row(current_row, wday_dt, "Project Task", "", proj_val, "Production support", res_name, res_team, res_vendor, work_hrs)
                         current_row += 1
@@ -1466,7 +1495,7 @@ def generate_domain_timesheet(template_path: str, year: int, month: int, output_
     if sheet_sum:
         is_sep2026 = update_summary_sheet_dynamically(
             sheet_sum, resources, year=year, month=month,
-            parsed_overrides=parsed_overrides, domain_key=domain_key, wb=wb
+            parsed_overrides=parsed_overrides, domain_key=domain_key, wb=wb, ph_dates=ph_dates
         )
         format_sheet_dimensions_and_alignment(sheet_sum, 'Summary', res_count, is_sep2026=is_sep2026)
 

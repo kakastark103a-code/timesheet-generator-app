@@ -18,7 +18,7 @@ ACCEPTED_WORKTYPES = {
 
 DISALLOWED_TERMS = {'miscellaneous', 'misc', 'others', 'ot', 'support'}
 
-def validate_timesheet_workbook(wb_or_path, target_month=None, domain_name=None, filename=None, checker="QuangTV15"):
+def validate_timesheet_workbook(wb_or_path, target_month=None, domain_name=None, filename=None, checker="TruongPT1"):
     """
     Performs comprehensive audit against all 27 rules in Timesheet_Validation_Checklist_Digital Team_Sep2026.xlsx.
     Returns structured dictionary with metadata, pass/warn/fail counts, compliance rate, and item details.
@@ -298,7 +298,7 @@ def validate_timesheet_workbook(wb_or_path, target_month=None, domain_name=None,
     for r in ts_rows:
         if r['work_item_type'] == 'Project Task' and r['hours'] == 4:
             has_leave_row = any(
-                r2['name'].lower() == r['name'].lower() and r2['date_str'] == r['date_str'] and r2['work_item_type'] == 'Leave' and r2['hours'] == 0
+                r2['name'].lower() == r['name'].lower() and r2['date_str'] == r['date_str'] and r2['work_item_type'].lower() == 'leave'
                 for r2 in ts_rows
             )
             if not has_leave_row:
@@ -307,7 +307,7 @@ def validate_timesheet_workbook(wb_or_path, target_month=None, domain_name=None,
         refs = ", ".join([f"Timesheet!B{r['row']}" for r in half_day_issues[:5]])
         results.append({
             'stt': 7, 'group': 'Giờ công', 'item': 'Nghỉ nửa ngày',
-            'rule': 'Cùng resource/date có Project Task = 4 và Leave = 0; Task/Leave Type = Half-day Leave.',
+            'rule': 'Cùng resource/date có Project Task = 4 và dòng Leave; Task/Leave Type = Half-day Leave.',
             'status': 'Cảnh báo',
             'reference': refs,
             'note': f"Có {len(half_day_issues)} ngày làm 4 giờ nhưng thiếu dòng Leave đối ứng.",
@@ -316,34 +316,22 @@ def validate_timesheet_workbook(wb_or_path, target_month=None, domain_name=None,
     else:
         results.append({
             'stt': 7, 'group': 'Giờ công', 'item': 'Nghỉ nửa ngày',
-            'rule': 'Cùng resource/date có Project Task = 4 và Leave = 0; Task/Leave Type = Half-day Leave.',
+            'rule': 'Cùng resource/date có Project Task = 4 và dòng Leave; Task/Leave Type = Half-day Leave.',
             'status': 'Đạt',
             'reference': 'Timesheet C:J',
-            'note': 'Các trường hợp nghỉ nửa ngày đều khớp cặp Project Task = 4h và Leave = 0h.',
+            'note': 'Các trường hợp nghỉ nửa ngày đều khớp cặp Project Task = 4h và dòng Leave.',
             'handler': checker
         })
 
-    # 8. Leave cả ngày
-    bad_leave_rows = [r for r in ts_rows if r['work_item_type'] == 'Leave' and r['hours'] != 0]
-    if bad_leave_rows:
-        refs = ", ".join([f"Timesheet!J{r['row']}" for r in bad_leave_rows[:5]])
-        results.append({
-            'stt': 8, 'group': 'Giờ công', 'item': 'Leave cả ngày',
-            'rule': 'Leave = 0; Task/Leave Type = Leave hoặc loại nghỉ phù hợp.',
-            'status': 'Không đạt',
-            'reference': refs,
-            'note': f"Có {len(bad_leave_rows)} dòng Leave có Actual Time khác 0 (yêu cầu khách hàng Actual Time = 0).",
-            'handler': checker
-        })
-    else:
-        results.append({
-            'stt': 8, 'group': 'Giờ công', 'item': 'Leave cả ngày',
-            'rule': 'Leave = 0; Task/Leave Type = Leave hoặc loại nghỉ phù hợp.',
-            'status': 'Đạt',
-            'reference': 'Timesheet J:J',
-            'note': 'Tất cả các dòng Leave đều có Actual Time = 0 theo quy định khách hàng.',
-            'handler': checker
-        })
+    # 8. Leave cả ngày (không yêu cầu Actual Time = 0)
+    results.append({
+        'stt': 8, 'group': 'Giờ công', 'item': 'Leave cả ngày',
+        'rule': 'Task/Leave Type = Leave hoặc loại nghỉ phù hợp (không bắt buộc Actual Time = 0).',
+        'status': 'Đạt',
+        'reference': 'Timesheet C:J',
+        'note': 'Dòng Leave không bị ràng buộc Actual Time = 0.',
+        'handler': checker
+    })
 
     # 9. Support hours hợp lệ
     bad_support_hrs = [
@@ -804,7 +792,7 @@ def generate_validation_checklist_file(
     target_month=None,
     domain_name=None,
     filename=None,
-    checker="QuangTV15"
+    checker="TruongPT1"
 ):
     """
     Generates populated Timesheet_Validation_Checklist_Digital Team_Sep2026.xlsx based on validation rules.

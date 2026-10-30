@@ -32,6 +32,19 @@ import shutil
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
+def build_checklist_download_name(domain_label, month_value):
+    """Checklist download name based on the domain, e.g. Timesheet_Validation_Checklist_CBG_CRM-OM_Domain_Sep2026.xlsx"""
+    clean = clean_domain_name_string(domain_label)
+    try:
+        if isinstance(month_value, str):
+            dt = datetime.strptime(month_value, '%Y-%m')
+        else:
+            dt = month_value
+        mon = dt.strftime('%b%Y')
+    except Exception:
+        mon = datetime.now().strftime('%b%Y')
+    return f"Timesheet_Validation_Checklist_{clean}_{mon}.xlsx"
+
 # On Vercel the project root (/var/task/) is READ-ONLY.
 # Always use /tmp for writable template storage, seeding bundled templates on cold start.
 _BUNDLED_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'timesheets_extracted')
@@ -332,15 +345,15 @@ def upload_chunk():
             checklist_audit = None
             try:
                 from timesheet_validator import generate_validation_checklist_file
-                checklist_filename = f"Timesheet_Validation_Checklist_Digital Team_{file_token}.xlsx"
+                checklist_filename = f"Checklist_{file_token}.xlsx"
                 checklist_out_path = os.path.join(OUTPUT_DIR, checklist_filename)
                 _, checklist_audit = generate_validation_checklist_file(
                     final_path,
                     output_path=checklist_out_path,
                     filename=filename,
-                    domain_name="Digital Team"
+                    domain_name=clean_domain_name_string(filename).replace('_', ' ')
                 )
-                download_target_name = f"Timesheet_Validation_Checklist_Digital Team_{filename}"
+                download_target_name = build_checklist_download_name(filename, checklist_audit.get('month'))
                 checklist_audit['download_url'] = f"/api/download-checklist?file={urllib.parse.quote(checklist_filename)}&name={urllib.parse.quote(download_target_name)}"
             except Exception as ex_chk:
                 print(f"Checklist generation error in upload_chunk: {ex_chk}")
@@ -509,17 +522,17 @@ def review_timesheet():
     checklist_audit = None
     try:
         from timesheet_validator import generate_validation_checklist_file
-        domain_disp = DOMAIN_NAMES.get(domain_key, "Digital Team")
-        checklist_filename = f"Timesheet_Validation_Checklist_Digital Team_{domain_key}_{year}_{month:02d}.xlsx"
+        domain_disp = DOMAIN_NAMES.get(domain_key, clean_domain_name_string(domain_key).replace('_', ' '))
+        checklist_filename = f"Checklist_{domain_key}_{year}_{month:02d}.xlsx"
         checklist_out_path = os.path.join(OUTPUT_DIR, checklist_filename)
         _, checklist_audit = generate_validation_checklist_file(
             temp_out,
             output_path=checklist_out_path,
             target_month=month_str,
             domain_name=domain_disp,
-            filename=f"FPT_{domain_disp}_Timesheet_{month_str}.xlsx"
+            filename=f"{domain_disp.replace(' ', '_')}_{datetime(year, month, 1).strftime('%b%Y')}.xlsx"
         )
-        download_target_name = f"Timesheet_Validation_Checklist_Digital Team_{datetime(year, month, 1).strftime('%b%Y')}.xlsx"
+        download_target_name = build_checklist_download_name(domain_disp, datetime(year, month, 1))
         checklist_audit['download_url'] = f"/api/download-checklist?file={urllib.parse.quote(checklist_filename)}&name={urllib.parse.quote(download_target_name)}"
     except Exception as ex_chk:
         print(f"Checklist generation error in review_timesheet: {ex_chk}")
@@ -606,15 +619,15 @@ def review_multi_uploaded_files():
             checklist_audit = None
             try:
                 from timesheet_validator import generate_validation_checklist_file
-                checklist_filename = f"Timesheet_Validation_Checklist_Digital Team_{file_token}.xlsx"
+                checklist_filename = f"Checklist_{file_token}.xlsx"
                 checklist_out_path = os.path.join(OUTPUT_DIR, checklist_filename)
                 _, checklist_audit = generate_validation_checklist_file(
                     temp_path,
                     output_path=checklist_out_path,
                     filename=filename,
-                    domain_name="Digital Team"
+                    domain_name=clean_domain_name_string(filename).replace('_', ' ')
                 )
-                download_target_name = f"Timesheet_Validation_Checklist_Digital Team_{filename}"
+                download_target_name = build_checklist_download_name(filename, checklist_audit.get('month'))
                 checklist_audit['download_url'] = f"/api/download-checklist?file={urllib.parse.quote(checklist_filename)}&name={urllib.parse.quote(download_target_name)}"
             except Exception as ex_chk:
                 print(f"Checklist generation error in review-multi-upload: {ex_chk}")
@@ -770,7 +783,7 @@ def download_generated_file():
 @app.route('/api/download-checklist', methods=['GET'])
 def download_checklist():
     file_key = request.args.get('file', '')
-    custom_name = request.args.get('name') or "Timesheet_Validation_Checklist_Digital Team_Sep2026.xlsx"
+    custom_name = request.args.get('name') or "Timesheet_Validation_Checklist.xlsx"
     if not file_key:
         return jsonify({'error': 'Missing file parameter'}), 400
     
