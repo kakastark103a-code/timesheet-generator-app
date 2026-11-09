@@ -6,6 +6,7 @@ import zipfile
 from copy import copy
 from datetime import datetime, date
 import openpyxl
+from openpyxl.formula.translate import Translator
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -996,6 +997,16 @@ def update_summary_sheet_dynamically(sheet_sum, resources, year=None, month=None
                 is_sep2026 = True
                 break
 
+    # Keep the template's own formula definitions. Summary logic can differ
+    # between template revisions/domains, so capture before deleting rows.
+    template_data_row = 3 if is_sep2026 else 2
+    template_formulas = {
+        c: sheet_sum.cell(template_data_row, c).value
+        for c in range(1, sheet_sum.max_column + 1)
+        if isinstance(sheet_sum.cell(template_data_row, c).value, str)
+        and sheet_sum.cell(template_data_row, c).value.startswith('=')
+    }
+
     if is_sep2026:
         sheet_sum.cell(1, 1, 'Month')
         if year and month:
@@ -1053,6 +1064,16 @@ def update_summary_sheet_dynamically(sheet_sum, resources, year=None, month=None
             sheet_sum.cell(r, 16, '=Summary[[#This Row],[Payable Leave days]]-Summary[[#This Row],[Used Days off in lieu]]')
             sheet_sum.cell(r, 17, '=SUM(Summary[[#This Row],[OT Weekdays]:[OT Holidays]])')
             sheet_sum.cell(r, 18, '=IF(AND(Summary[[#This Row],[Days off in lieu per month]]>0,Summary[[#This Row],[Payable Leave days]]>0),IF(AND(Summary[[#This Row],[Leave occur]]>0,Summary[[#This Row],[Leave occur]]<=Summary[[#This Row],[Days off in lieu per month]]),Summary[[#This Row],[Leave occur]],Summary[[#This Row],[Days off in lieu per month]]),0)')
+
+            for c, formula in template_formulas.items():
+                try:
+                    sheet_sum.cell(r, c).value = Translator(
+                        formula, origin=sheet_sum.cell(template_data_row, c).coordinate
+                    ).translate_formula(sheet_sum.cell(r, c).coordinate)
+                except (ValueError, TypeError):
+                    # Retain the generated fallback if the formula syntax is
+                    # outside what the A1 reference translator understands.
+                    pass
 
             sheet_sum.cell(r, 6).number_format = '_(* #,##0.00_);_(* \(#,##0.00\);_(* \\-??_);_(@_)'
             sheet_sum.cell(r, 7).number_format = '_(* #,##0.00_);_(* \(#,##0.00\);_(* \\-??_);_(@_)'
@@ -1145,6 +1166,14 @@ def update_summary_sheet_dynamically(sheet_sum, resources, year=None, month=None
                 sheet_sum.cell(r, col_idx, f'=COUNTIFS(Timesheet!G:G,Summary!{name_col_let}{r},Timesheet!C:C,\"Leave\")')
             elif 'public holiday' in h_key:
                 sheet_sum.cell(r, col_idx, f'=COUNTIFS(Timesheet!G:G,Summary!{name_col_let}{r},Timesheet!C:C,\"Public Holiday\")')
+
+        for c, formula in template_formulas.items():
+            try:
+                sheet_sum.cell(r, c).value = Translator(
+                    formula, origin=sheet_sum.cell(template_data_row, c).coordinate
+                ).translate_formula(sheet_sum.cell(r, c).coordinate)
+            except (ValueError, TypeError):
+                pass
 
     return False
 
